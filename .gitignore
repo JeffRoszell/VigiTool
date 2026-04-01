@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Data output (participant data should not be committed)
+digit_vigilance_*.json
+pvt_data_*.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# IRB documents
+IRB*.pdf
