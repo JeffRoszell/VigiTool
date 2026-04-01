@@ -1,0 +1,44 @@
+[project]
+name = "vigilance-tasks"
+version = "0.1.0"
+description = "CVT and PVT vigilance task suite for Poltavski Lab, UND"
+requires-python = ">=3.7"
+# No runtime dependencies — stdlib only (tkinter)
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py37"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "B",     # flake8-bugbear
+    "T20",   # flake8-print (catches debug prints)
+    "S",     # flake8-bandit (security)
+    "PTH",   # flake8-use-pathlib
+]
+ignore = [
+    "S311",  # allow random module (not used for crypto, used for trial randomization)
+    "T201",  # we'll handle print() via hook — allow in task code for console logging
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]  # allow assert in tests
+"legacy/*" = ["ALL"]  # don't lint legacy code

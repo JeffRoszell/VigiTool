@@ -4,15 +4,35 @@
 # Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
 
-# Data output (participant data should not be committed)
+# Data output (participant data must not be committed — IRB requirement)
+data/
 digit_vigilance_*.json
 pvt_data_*.json
+cvt_*.json
+
+# IRB documents
+IRB*.pdf
 
 # IDE
 .idea/
 .vscode/
 *.swp
+*.swo
+*~
 
-# IRB documents
-IRB*.pdf
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Test artifacts
+.pytest_cache/
+.ruff_cache/
+htmlcov/
+.coverage

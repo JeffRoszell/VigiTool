@@ -4,35 +4,78 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Vigilance task suite for cognitive neuroscience research at UND Psychology Department. Contains Python-based sustained attention tasks using tkinter (standard library only, no external dependencies).
+Vigilance task suite for IRB #0007078 (PI: Poltavski, Co-PI: Gupta) at UND Psychology Department. Compares sustained attention in younger (18-35) and older (65+) adults using two tasks with concurrent EEG and eye-tracking (future integration phase).
 
-### Tasks
+**Lead Developer**: Jeff Roszell (BME master's student)
 
-- **Digit Vigilance Task** (`digit_vigilance_WORKING.py`): 24-minute sustained attention task based on Claypoole et al. (2019). Participants respond to two-digit numbers where digit difference is 0 or +/-1 (critical signals). Two difficulty conditions: high (500ms ISI) and low (1500ms ISI). Measures d', criterion, hit rate, false alarm rate, and vigilance decrement across 4 six-minute periods.
-- **PVT** (`pvt_task_WORKING.py`): 10-minute Psychomotor Vigilance Task measuring simple reaction time to a millisecond counter appearing at random 1-10s intervals.
+## Constraints
 
-### Key Design Details
+- **Pure Python 3.7+** with tkinter — no JavaScript, no web frameworks, no external runtime dependencies
+- **Cross-platform**: must work on Windows, macOS, and Linux
+- Dev dependencies (pytest, ruff) are acceptable but not required at runtime
+- Participant data must never be committed to version control (IRB requirement)
 
-- All tasks use tkinter fullscreen with black background
-- Keyboard input uses only lowercase `<space>` binding (compatibility fix for all tkinter versions 8.5-9.0)
-- Both canvas and root bindings are set for keyboard events to ensure focus capture
-- Data output is JSON with timestamped filenames (e.g., `digit_vigilance_high_YYYYMMDD_HHMMSS.json`)
-- Signal detection theory metrics (d', criterion) use an approximate z-score function rather than scipy
+## Project Structure
+
+```
+PsychDept/
+├── src/                    # Active development
+├── legacy/                 # Frozen original code — do not modify
+├── tests/                  # pytest test suite
+├── data/                   # Participant output (gitignored)
+├── Background/             # Reference papers, IRB, legacy zip
+├── .claude/agents/         # Custom agents (sme, compliance, e2e-test)
+├── .github/workflows/      # CI pipeline
+├── REQUIREMENTS.md          # Core task requirements
+├── REQUIREMENTS_INTEGRATION.md  # EEG/eye-tracking integration (future)
+├── QUESTIONS_FOR_PI.md      # Open questions for Poltavski/Gupta
+└── QUESTIONS_INTEGRATION.md # Open questions for hardware integration
+```
+
+## Tasks
+
+### CVT (Cognitive Vigilance Task)
+Based on Claypoole et al. (2019). Two-digit numbers in screen quadrants; press spacebar when digit difference is 0 or ±1. Two difficulty conditions via event rate: high (500ms ISI, ~40/min) and low (1500ms ISI, ~24/min). 24-minute blocks, 4 periods, 20 signals per block. Measures d', criterion, hit rate, FA rate, vigilance decrement.
+
+### PVT (Psychomotor Vigilance Task)
+Fixation cross → red circle; press spacebar as fast as possible. Two 24-minute sessions with high/low difficulty (500ms/1500ms ISI). Measures RT, lapses (>500ms), anticipatory responses (<100ms).
+
+## Development Commands
+
+```bash
+# Lint
+ruff check src/ tests/
+
+# Test
+pytest tests/ -v
+
+# Install dev dependencies
+pip install -e ".[dev]"
+```
+
+## Custom Agents
+
+- **`sme`** — Subject matter expert on vigilance tasks, SDT, Claypoole methodology, and the IRB protocol. Prefers local materials (Background/ folder); only web-searches when explicitly asked. Use for validating task parameters and methodology questions.
+- **`compliance`** — Checks for PII, participant data in commits, .gitignore integrity, and IRB data handling. Use before commits or when reviewing data-handling code.
+- **`e2e-test`** — Headless end-to-end regression test runner. Validates trial generation, metrics calculation, and JSON output schema without launching tkinter. Use after significant changes to task logic.
+
+## Pre-Commit Hooks
+
+Configured in `.claude/settings.json`:
+1. Ruff lint check on src/ and tests/
+2. Debug print() detection in src/
+3. Participant data / IRB file commit blocking
+4. Hardcoded path detection
+5. Unit test execution
+
+## Data Output
+
+Participant data saves to `data/<participant_id>/` with format `<task>_<difficulty>_<YYYYMMDD_HHMMSS>.json`. See REQUIREMENTS.md for full JSON schema.
+
+## Key Technical Notes
+
+- Keyboard input uses only lowercase `<space>` binding (tkinter 8.5-9.0 compatibility)
+- Both canvas and root bindings are set for keyboard focus capture
+- SDT metrics use an approximate z-score function (no scipy dependency)
 - ESC key triggers emergency exit with data save
-
-## Running Tasks
-
-```bash
-python3 digit_vigilance_WORKING.py
-python3 pvt_task_WORKING.py
-```
-
-Or open in Spyder and press F5. User must click the black screen first to give it keyboard focus.
-
-## Data Analysis
-
-```bash
-python3 analyze_data.py
-```
-
-Analyzes all `*.json` data files in the working directory.
+- Task timing: ISI controls event rate (500ms = high difficulty, 1500ms = low difficulty), stimulus duration is 1000ms for CVT
