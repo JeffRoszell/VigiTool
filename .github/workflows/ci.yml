@@ -29,18 +29,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      # PsychoPy needs a virtual display on Linux
-      - name: Install Xvfb (Linux only)
-        if: runner.os == 'Linux'
-        run: sudo apt-get install -y xvfb
-
       - name: Install dependencies
-        run: pip install pytest psychopy
+        run: pip install pytest
 
-      - name: Run tests (Linux)
-        if: runner.os == 'Linux'
-        run: xvfb-run --auto-servernum pytest tests/ -v
-
-      - name: Run tests (macOS / Windows)
-        if: runner.os != 'Linux'
+      - name: Run tests
         run: pytest tests/ -v
