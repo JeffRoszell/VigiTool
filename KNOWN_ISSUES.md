@@ -1,59 +1,42 @@
 # Known Issues
 
-Tracked bugs and protocol mismatches identified in the current codebase.
+Tracked bugs and protocol mismatches identified in the codebase.
 
-## Critical Bugs
+## Resolved (fixed in Phase 1 PsychoPy migration)
 
-### 1. CVT: Shuffle destroys period structure
-**File:** `src/digit_vigilance_WORKING.py:328`
-Signals are carefully placed into 4 periods (5 per period), then `random.shuffle(self.trial_sequence)` scrambles the entire list. The `period` field no longer matches actual presentation order. All vigilance decrement analysis is meaningless.
+| # | Issue | File | Resolution |
+|---|-------|------|------------|
+| 1 | CVT: shuffle destroys period structure | legacy/digit_vigilance_WORKING.py:328 | Signals placed within each period, periods concatenated in order — no global shuffle |
+| 2 | CVT: z_score_approx is mathematically wrong | legacy/digit_vigilance_WORKING.py:473 | Replaced with correct A&S 26.2.17 implementation + Hautus log-linear correction |
+| 3 | CVT: responses accepted during blank screen (duplicate trials) | legacy/digit_vigilance_WORKING.py:390 | State machine with `responded` flag spans both stimulus and ISI phases |
+| 4 | PVT: anticipatory response doesn't cancel pending stimulus | legacy/pvt_task_WORKING.py:219 | Time-based loop replaces callback chain entirely |
+| 5 | PVT: 10-minute duration instead of 24 minutes | legacy/pvt_task_WORKING.py:43 | 24-minute block (2-minute test mode) |
+| 6 | PVT: no difficulty selection | legacy/pvt_task_WORKING.py | High/low difficulty via launch dialog |
+| 7 | PVT: ISI range wrong (random 1-10s instead of fixed 500/1500ms) | legacy/pvt_task_WORKING.py | Fixed blank ISI (500/1500ms) + separate random 1-10s fixation foreperiod |
+| 8 | PVT: ESC messagebox blocks UI while timers keep running | legacy/pvt_task_WORKING.py:462 | ESC checked in every poll loop, returns immediately with guaranteed save via `finally` |
+| 9 | Both: data saves to working directory, no participant ID | legacy/* | Data saves to `data/<participant_id>/` via launch dialog |
+| 10 | Neither task cancels `after()` callbacks on exit | legacy/* | No callbacks — time-based polling loops exit cleanly |
+| 11 | analyze_data.py: hardcoded path | legacy/analyze_data.py:172 | Not yet updated (Phase 4) |
+| 12 | Debug output left in production code | legacy/* | No print statements or debug labels in src/ |
+| 13 | CVT: falsy RT check (`if rt` vs `if rt is not None`) | legacy/digit_vigilance_WORKING.py:424 | Explicit `if rt_ms is not None` throughout |
 
-### 2. CVT: z_score_approx is mathematically wrong
-**File:** `src/digit_vigilance_WORKING.py:473-482`
-The formula doesn't match any standard inverse normal approximation (Abramowitz & Stegun uses `t = sqrt(-2 * ln(p))`). Produces incorrect d' and criterion values — the core SDT metrics.
+---
 
-### 3. CVT: Responses accepted during blank screen
-**File:** `src/digit_vigilance_WORKING.py:390-408`
-`blank_screen()` records a miss/CR when participant didn't respond but never sets `self.responded = True`. Pressing spacebar during the blank interval records a duplicate trial with a bogus RT.
+## Open
 
-### 4. PVT: Anticipatory response doesn't cancel pending stimulus
-**File:** `src/pvt_task_WORKING.py:219`
-On anticipatory response, a new ISI is scheduled but the already-pending `present_stimulus` callback still fires. Creates two parallel stimulus chains running simultaneously.
+### PVT foreperiod range unconfirmed
+Per REQUIREMENTS §6, the 1–10s foreperiod range needs confirmation with Dr. Poltavski.
+Currently implemented as 1–10s (`FOREPERIOD_RANGE` in `src/pvt_task.py`).
 
-## Protocol Mismatches
+### PVT stimulus size unconfirmed
+Red circle radius is set to 0.08 norm units (~8% of screen height).
+Exact size to be confirmed with Dr. Poltavski (REQUIREMENTS §6).
 
-### 5. PVT: 10-minute duration instead of 24 minutes
-**File:** `src/pvt_task_WORKING.py:43`
-Protocol specifies two 24-minute sessions. Code uses 10 minutes.
+### analyze_data.py not yet updated
+`legacy/analyze_data.py` has a hardcoded `/mnt/user-data/outputs` path.
+Will be updated in Phase 4 to point to `data/<participant_id>/`.
 
-### 6. PVT: No difficulty selection
-Protocol specifies high/low difficulty conditions (500ms/1500ms ISI). PVT has no difficulty choice.
-
-### 7. PVT: ISI range wrong
-Protocol calls for fixed ISI (500ms or 1500ms depending on difficulty). Code uses random 1-10s ISI.
-
-## Moderate Bugs
-
-### 8. PVT: ESC messagebox blocks UI while timers keep running
-**File:** `src/pvt_task_WORKING.py:462`
-`messagebox.askyesno()` pauses interaction but `after()` callbacks continue firing. Stimuli pile up in the background. Also inconsistent with CVT which exits immediately.
-
-### 9. Both tasks: Data saves to working directory
-**Files:** `src/digit_vigilance_WORKING.py:517`, `src/pvt_task_WORKING.py:418`
-Output should go to `data/<participant_id>/` per project spec. No participant ID input exists and files save to CWD.
-
-### 10. Neither task cancels `after()` callbacks on exit
-Pending `after()` calls keep firing after `end_task()` or `emergency_exit()`, which can cause errors on destroyed widgets.
-
-### 11. analyze_data.py: Hardcoded path
-**File:** `src/analyze_data.py:172`
-Uses `/mnt/user-data/outputs` which won't work on any local machine.
-
-## Minor Issues
-
-### 12. Debug output left in production code
-`print()` statements and visible debug/key-press labels remain in both tasks. Pre-commit hooks should catch these.
-
-### 13. CVT: Falsy RT check
-**File:** `src/digit_vigilance_WORKING.py:424`
-`if rt else None` means a 0.0ms RT would incorrectly become `None`. Should be `if rt is not None`.
+### PsychoPy 2026.1.3 DlgFromDict bug
+`DlgFromDict.show()` indexes `self.data` (a list) with a string key when
+`copyDict=False`. Worked around in both tasks with `copyDict=True` and reading
+from `dlg.dictionary`. Upstream bug — track if fixed in future PsychoPy releases.

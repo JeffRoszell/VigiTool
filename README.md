@@ -97,7 +97,7 @@ VigiTool/
 | Component | Status |
 |-----------|--------|
 | CVT (PsychoPy) | Complete |
-| PVT (PsychoPy) | In progress |
+| PVT (PsychoPy) | Complete |
 | Unified launcher | Planned |
 | iMotions integration | Planned (Phase 2) |
 | EEG / eye-tracking | Planned (Phase 3) |

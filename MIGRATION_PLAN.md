@@ -54,7 +54,7 @@ Migrate the vigilance task suite (CVT and PVT) from tkinter to PsychoPy, with iM
 
 ## Migration Phases
 
-### Phase 1: Core Task Migration
+### Phase 1: Core Task Migration ✓ COMPLETE
 
 Rewrite CVT and PVT using PsychoPy's experiment framework.
 
@@ -83,7 +83,7 @@ Rewrite CVT and PVT using PsychoPy's experiment framework.
 - ESC triggers immediate emergency exit with data save (no confirmation dialog)
 - Remove all debug print statements and labels
 
-### Phase 2: iMotions Integration
+### Phase 2: iMotions Integration (next)
 
 Add TCP event marker communication to both tasks.
 
