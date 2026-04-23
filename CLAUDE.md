@@ -10,7 +10,7 @@ Vigilance task suite for IRB #0007078 (PI: Poltavski, Co-PI: Gupta) at UND Psych
 
 ## Constraints
 
-- **Pure Python 3.7+** with tkinter — no JavaScript, no web frameworks, no external runtime dependencies
+- **Pure Python 3.8+** with PsychoPy — no JavaScript, no web frameworks
 - **Cross-platform**: must work on Windows, macOS, and Linux
 - Dev dependencies (pytest, ruff) are acceptable but not required at runtime
 - Participant data must never be committed to version control (IRB requirement)
@@ -57,7 +57,7 @@ pip install -e ".[dev]"
 
 - **`sme`** — Subject matter expert on vigilance tasks, SDT, Claypoole methodology, and the IRB protocol. Prefers local materials (Background/ folder); only web-searches when explicitly asked. Use for validating task parameters and methodology questions.
 - **`compliance`** — Checks for PII, participant data in commits, .gitignore integrity, and IRB data handling. Use before commits or when reviewing data-handling code.
-- **`e2e-test`** — Headless end-to-end regression test runner. Validates trial generation, metrics calculation, and JSON output schema without launching tkinter. Use after significant changes to task logic.
+- **`e2e-test`** — Headless end-to-end regression test runner. Validates trial generation, metrics calculation, and JSON output schema without launching PsychoPy. Use after significant changes to task logic.
 
 ## Pre-Commit Hooks
 
@@ -74,8 +74,8 @@ Participant data saves to `data/<participant_id>/` with format `<task>_<difficul
 
 ## Key Technical Notes
 
-- Keyboard input uses only lowercase `<space>` binding (tkinter 8.5-9.0 compatibility)
-- Both canvas and root bindings are set for keyboard focus capture
-- SDT metrics use an approximate z-score function (no scipy dependency)
+- UI and stimulus presentation use PsychoPy (`visual.Window`, `visual.TextStim`, `event`, `core.Clock`)
+- SDT metrics use correct Abramowitz & Stegun z-score approximation
 - ESC key triggers emergency exit with data save
 - Task timing: ISI controls event rate (500ms = high difficulty, 1500ms = low difficulty), stimulus duration is 1000ms for CVT
+- iMotions integration via TCP markers on port 8089 (Phase 2)
