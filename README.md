@@ -18,36 +18,57 @@ Fixation cross → red circle; press **spacebar** as fast as possible. Two 24-mi
 
 ---
 
-## Lab Setup (first time only)
+## Setup
 
-1. Install [Python 3.8+](https://www.python.org/downloads/)
-2. Run the bootstrap script:
-   ```
-   python bootstrap.py
-   ```
-   This installs PsychoPy and all dependencies.
+**Python 3.8 or 3.10 recommended** (per PsychoPy docs). Python 3.9 also works.
+
+```bash
+git clone https://github.com/JeffRoszell/VigiTool.git
+cd VigiTool
+python3 -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+```
+
+**Windows / Linux** — standard install:
+```bash
+pip install psychopy
+```
+
+**macOS** — `tables` (HDF5) fails to build without system headers; install without it:
+```bash
+pip install --upgrade pip
+pip install --no-deps psychopy
+pip install six scipy "pyglet==1.5.27" numpy pillow pyopengl wxPython configobj \
+    requests json-tricks freetype-py psutil future pyyaml pyzmq ujson soundfile \
+    pyserial pandas openpyxl matplotlib imageio imageio-ffmpeg gitpython \
+    cryptography beautifulsoup4 astunparse arabic-reshaper python-bidi \
+    msgpack msgpack-numpy pyarrow websockets xmlschema zeroconf \
+    "questplus>=2023.1" "gevent==25.5.1" "zope.event==5.0" "zope.interface==7.2" \
+    "setuptools==78.1.1" "pyobjc>8.0" "pyobjc-core>8.0" \
+    "pyobjc-framework-Quartz>8.0" "pyobjc-framework-ScriptingBridge>8.0"
+```
 
 ## Running the Tasks
 
-```
-python run.py
+```bash
+# From the project root (so data/ saves in the right place)
+python src/cvt_task.py   # Cognitive Vigilance Task
+python src/pvt_task.py   # Psychomotor Vigilance Task  (coming soon)
 ```
 
-A launcher will appear — select CVT or PVT, choose difficulty, and enter the participant ID.
+A dialog will appear at launch — enter participant ID, age, difficulty, and optionally tick **Test mode** for a 2-minute run.
 
 ---
 
 ## Developer Setup
 
 ```bash
-git clone https://github.com/JeffRoszell/VigiTool.git
-cd VigiTool
-pip install -e ".[dev]"
+pip install pytest ruff
 
 # Lint
 ruff check src/ tests/
 
-# Test
+# Test (no PsychoPy required)
 pytest tests/ -v
 ```
 
@@ -75,7 +96,7 @@ VigiTool/
 
 | Component | Status |
 |-----------|--------|
-| CVT (PsychoPy) | In progress |
+| CVT (PsychoPy) | Complete |
 | PVT (PsychoPy) | In progress |
 | Unified launcher | Planned |
 | iMotions integration | Planned (Phase 2) |
