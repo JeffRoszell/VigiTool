@@ -36,3 +36,9 @@ env/
 .ruff_cache/
 htmlcov/
 .coverage
+
+# PsychoPy
+*.psyexp
+*.psydat
+lastRunInfo.pickle
+psychopy_prefFiler*.lock

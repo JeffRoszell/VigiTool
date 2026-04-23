@@ -28,5 +28,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install pytest
-      - run: pytest tests/ -v
+
+      # PsychoPy needs a virtual display on Linux
+      - name: Install Xvfb (Linux only)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y xvfb
+
+      - name: Install dependencies
+        run: pip install pytest psychopy
+
+      - name: Run tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run --auto-servernum pytest tests/ -v
+
+      - name: Run tests (macOS / Windows)
+        if: runner.os != 'Linux'
+        run: pytest tests/ -v
