@@ -91,7 +91,6 @@ def compute_period_metrics(trials: list[dict], n_periods: int) -> list[dict]:
 
 def save_data(
     participant_id: str,
-    age: int,
     difficulty: str,
     test_mode: bool,
     trials: list[dict],
@@ -107,7 +106,6 @@ def save_data(
     output = {
         "metadata": {
             "participant_id": participant_id,
-            "age": age,
             "task": "pvt",
             "difficulty": difficulty,
             "timestamp": timestamp,
@@ -133,17 +131,23 @@ def save_data(
 
 # ── PsychoPy display helpers ───────────────────────────────────────────────
 
-def _instructions(win: visual.Window, difficulty: str, test_mode: bool) -> bool:
+def _instructions(
+    win: visual.Window,
+    difficulty: str,
+    test_mode: bool,
+    block_num: Optional[int] = None,
+) -> bool:
     """Returns False if ESC pressed instead of SPACE."""
     from psychopy import event, visual  # noqa: PLC0415
 
     pace = "500 ms blank" if difficulty == "high" else "1500 ms blank"
     mins = BLOCK_MINUTES["test" if test_mode else "full"]
     mode_tag = " [TEST MODE]" if test_mode else ""
+    block_tag = f"Block {block_num} — " if block_num else ""
 
     body = (
         f"PSYCHOMOTOR VIGILANCE TASK{mode_tag}\n\n"
-        f"Difficulty: {difficulty.upper()}  ({pace} between trials)\n"
+        f"{block_tag}Difficulty: {difficulty.upper()}  ({pace} between trials)\n"
         f"Duration: {mins} minutes\n\n"
         "A fixation cross (+) will appear at screen centre.\n"
         "After a short wait, a RED CIRCLE will appear.\n\n"
@@ -194,7 +198,7 @@ def _results_screen(
     for p in period_perf:
         lines.append(f"  Period {p['period']}:  {_fmt(p['mean_rt_ms'])}  "
                      f"(lapses: {p['lapses']})")
-    lines += ["", f"Saved to: {filename}", "", "Press ESC to exit."]
+    lines += ["", f"Saved to: {filename}", "", "Press SPACEBAR to continue."]
 
     msg = visual.TextStim(
         win, text="\n".join(lines), height=0.055,
@@ -202,7 +206,7 @@ def _results_screen(
     )
     msg.draw()
     win.flip()
-    event.waitKeys(keyList=["escape"])
+    event.waitKeys(keyList=["space", "escape"])
 
 
 # ── Core task loop ─────────────────────────────────────────────────────────
@@ -357,6 +361,56 @@ def run_task(
     return trials, pre_stim_anticipatory, False
 
 
+# ── Full session ───────────────────────────────────────────────────────────
+
+def run_full_session(
+    win: visual.Window,
+    participant_id: str,
+    difficulty_order: tuple[str, str],
+    test_mode: bool,
+    timestamp: str,
+    *,
+    break_minutes: Optional[float] = None,
+) -> bool:
+    """Run a full PVT session: block1 → break → block2.
+
+    Returns True if escaped.
+    """
+    from psychopy import core  # noqa: PLC0415
+
+    from session_utils import BREAK_MINUTES, timed_break  # noqa: PLC0415
+
+    mode = "test" if test_mode else "full"
+    n_periods = NUM_PERIODS[mode]
+    block_s = BLOCK_MINUTES[mode] * 60.0
+    block_clock = core.Clock()
+
+    for block_num, difficulty in enumerate(difficulty_order, start=1):
+        if not _instructions(win, difficulty, test_mode, block_num=block_num):
+            return True
+
+        block_clock.reset()
+        trials, pre_stim_anticipatory, escaped = run_task(
+            win, difficulty, block_clock, n_periods, block_s,
+        )
+
+        filename = save_data(
+            participant_id, difficulty, test_mode,
+            trials, pre_stim_anticipatory, timestamp,
+        )
+        if escaped:
+            return True
+
+        _results_screen(win, trials, pre_stim_anticipatory, filename, n_periods)
+
+        if block_num < len(difficulty_order):
+            mins = break_minutes if break_minutes is not None else BREAK_MINUTES
+            if not timed_break(win, minutes=mins, label="BREAK BETWEEN BLOCKS"):
+                return True
+
+    return False
+
+
 # ── Entry point ────────────────────────────────────────────────────────────
 
 def main() -> None:
@@ -365,15 +419,14 @@ def main() -> None:
 
     info: dict = {
         "Participant ID": "",
-        "Age": "",
-        "Difficulty": ["high", "low"],
+        "Difficulty order": ["high → low", "low → high"],
         "Test mode": False,
     }
     # copyDict=True works around a bug in PsychoPy 2026.1.3 DlgFromDict.show()
     dlg = gui.DlgFromDict(
         info,
         title="PVT",
-        order=["Participant ID", "Age", "Difficulty", "Test mode"],
+        order=["Participant ID", "Difficulty order", "Test mode"],
         sortKeys=False,
         copyDict=True,
     )
@@ -382,18 +435,11 @@ def main() -> None:
 
     result = dlg.dictionary
     participant_id = str(result["Participant ID"]).strip() or "unknown"
-    difficulty = str(result["Difficulty"]).lower()
+    order_str = str(result["Difficulty order"])
     test_mode = bool(result["Test mode"])
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    try:
-        age = int(result["Age"])
-    except ValueError:
-        age = 0
-
-    mode = "test" if test_mode else "full"
-    n_periods = NUM_PERIODS[mode]
-    block_s = BLOCK_MINUTES[mode] * 60.0
+    difficulty_order = ("high", "low") if order_str.startswith("high") else ("low", "high")
 
     win = _visual.Window(
         fullscr=True,
@@ -401,30 +447,12 @@ def main() -> None:
         units="norm",
         allowGUI=False,
     )
-    block_clock = core.Clock()
-    trials: list[dict] = []
-    pre_stim_anticipatory = 0
-    escaped = False
 
     try:
-        if not _instructions(win, difficulty, test_mode):
-            escaped = True
-        else:
-            block_clock.reset()
-            trials, pre_stim_anticipatory, escaped = run_task(
-                win, difficulty, block_clock, n_periods, block_s,
-            )
+        run_full_session(win, participant_id, difficulty_order, test_mode, timestamp)
     finally:
-        filename = save_data(
-            participant_id, age, difficulty, test_mode,
-            trials, pre_stim_anticipatory, timestamp,
-        )
-
-    if not escaped:
-        _results_screen(win, trials, pre_stim_anticipatory, filename, n_periods)
-
-    win.close()
-    core.quit()
+        win.close()
+        core.quit()
 
 
 if __name__ == "__main__":

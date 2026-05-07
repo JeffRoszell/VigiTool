@@ -73,11 +73,55 @@ These inform what events need precise marking:
 
 ---
 
-## 5. Open Items
-- All items in `QUESTIONS_INTEGRATION.md` must be resolved before implementation
+## 5. iMotions API — Research Findings
+
+iMotions serves as the synchronization hub for all biosensors (B-Alert, Tobii, Smarteye). The task software communicates with iMotions via its external API rather than integrating with each sensor SDK directly.
+
+### 5.1 Connection
+
+- **Protocol**: TCP (preferred over UDP; UDP noted as "not well supported" in third-party implementations)
+- **Port**: 8089 (iMotions default)
+- **Architecture**: iMotions acts as the **server**; the task script is the **client**
+- **Setup required in iMotions**: Global Preferences → API → Enable event reception + Use TCP
+- **Python socket**: `socket.socket(socket.AF_INET, socket.SOCK_STREAM)`, connect to `('127.0.0.1', 8089)`
+
+### 5.2 Marker Format
+
+Two marker types are supported. Format is semicolon-delimited, terminated with `\r\n`:
+
+| Type | Format |
+|------|--------|
+| Discrete (point-in-time) | `M;2;;;label;;S;I\r\n` |
+| Range start | `M;2;;;label;;S;I\r\n` |
+| Range end | `M;2;;;label;;E;I\r\n` |
+
+These formats are cross-referenced from the iMotions 7.0 Programming Guide and consistent with the marker format in `MIGRATION_PLAN.md`. Field definitions for the full semicolon-delimited structure are not publicly documented — they require access to the iMotions Help Center (login required at `my.imotions.com`).
+
+### 5.3 Research Limitations
+
+- Full iMotions API documentation is behind a login at `my.imotions.com` — not publicly accessible
+- The official iMotions + PsychoPy integration blog post returns 404 (as of April 2026)
+- A PsychoPy community thread asking for a working iMotions marker example has no accepted answer (last checked April 2026)
+- No public Python implementation with confirmed working format was found
+- **Action required**: Retrieve the Programming Guide PDF from the lab machine (typically installed alongside iMotions) and confirm the exact field structure and any version-specific differences
+
+### 5.4 Sources
+
+- [iMotions API overview](https://imotions.com/products/imotions-lab/developers/api/)
+- [iMotions 7.0 Programming Guide (Scribd — requires account)](https://www.scribd.com/document/429363242/IMotions-7-0-Programming-Guide-January-2018)
+- [PsychoPy forum — iMotions marker question (unanswered)](https://discourse.psychopy.org/t/trigger-markers-in-imotions-through-psychopy-connect-to-imotions-api/32571)
+- [GitHub: lochiego/iomotions — Python TCP wrapper](https://github.com/lochiego/iomotions)
+- [GitHub: ltcmdrkeen/imotions-web-bridge — JS→TCP bridge with marker format examples](https://github.com/ltcmdrkeen/imotions-web-bridge)
+
+---
+
+## 6. Open Items
+- Retrieve iMotions Programming Guide PDF from lab machine to confirm exact marker field definitions
+- All items in `QUESTIONS_INTEGRATION.md` must be resolved before full implementation
 - Hardware access needed for testing
 - May require non-standard-library Python packages (pylsl, tobii_research, pyserial)
 
 ---
 
 *Prepared by Jeff Roszell — March 2026*
+*iMotions API research added April 2026*

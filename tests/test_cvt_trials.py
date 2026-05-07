@@ -5,13 +5,15 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from cvt_task import (
-    SIGNALS_PER_PERIOD,
     NUM_PERIODS,
-    build_trial_sequence,
-    compute_sdt,
-    compute_period_metrics,
+    SIGNALS_PER_PERIOD,
+    STIM_POS,
     _critical_signal,
     _non_signal,
+    build_practice_sequence,
+    build_trial_sequence,
+    compute_period_metrics,
+    compute_sdt,
 )
 
 
@@ -35,16 +37,23 @@ def _check_sequence(difficulty: str, test_mode: bool) -> None:
     mode = "test" if test_mode else "full"
     trials = build_trial_sequence(difficulty, test_mode)
     n_periods = NUM_PERIODS[mode]
-    sigs = SIGNALS_PER_PERIOD[mode]
 
     # correct total signal count
-    assert sum(t["is_signal"] for t in trials) == sigs * n_periods
+    assert sum(t["is_signal"] for t in trials) == SIGNALS_PER_PERIOD * n_periods
 
-    # period structure preserved — trials within each period appear consecutively
-    # and each period contains exactly `sigs` signals
+    # period structure preserved — each period has SIGNALS_PER_PERIOD signals
     for p in range(1, n_periods + 1):
         period_trials = [t for t in trials if t["period"] == p]
-        assert len([t for t in period_trials if t["is_signal"]]) == sigs
+        signals = [t for t in period_trials if t["is_signal"]]
+        assert len(signals) == SIGNALS_PER_PERIOD, (
+            f"period {p} has {len(signals)} signals, expected {SIGNALS_PER_PERIOD}"
+        )
+
+        # U3 invariant: each location holds exactly one critical signal per period
+        locs = sorted(t["location"] for t in signals)
+        assert locs == sorted(STIM_POS.keys()), (
+            f"period {p} signal locations {locs} != all 5 locations"
+        )
 
     # trial numbers are sequential from 1
     assert [t["trial_number"] for t in trials] == list(range(1, len(trials) + 1))
@@ -70,12 +79,42 @@ def test_sequence_test_low():
     _check_sequence("low", True)
 
 
-def test_all_quadrants_valid():
-    from cvt_task import QUADRANT_POS
+def test_all_locations_valid():
     trials = build_trial_sequence("high", True)
-    valid = set(QUADRANT_POS.keys())
+    valid = set(STIM_POS.keys())
     for t in trials:
-        assert t["quadrant"] in valid
+        assert t["location"] in valid
+
+
+def test_center_is_a_location():
+    """U3 protocol: central display added as 5th location."""
+    assert "center" in STIM_POS
+    assert STIM_POS["center"] == (0.0, 0.0)
+    assert len(STIM_POS) == 5
+
+
+def test_signals_per_period_is_five():
+    """SIGNALS_PER_PERIOD must equal the number of locations."""
+    assert SIGNALS_PER_PERIOD == len(STIM_POS) == 5
+
+
+# ── Practice sequence ──────────────────────────────────────────────────────
+
+def test_practice_sequence_has_signals_in_each_location():
+    trials = build_practice_sequence("low")
+    signals = [t for t in trials if t["is_signal"]]
+    assert len(signals) >= 1
+    # practice covers all 5 locations once each (capped by available trials)
+    locs = {t["location"] for t in signals}
+    assert locs == set(STIM_POS.keys())
+
+
+def test_practice_sequence_high_pace():
+    trials = build_practice_sequence("high")
+    assert len(trials) > 0
+    for t in trials:
+        assert t["location"] in STIM_POS
+        assert t["stimulus"].isdigit() and len(t["stimulus"]) == 2
 
 
 # ── SDT metrics ────────────────────────────────────────────────────────────
@@ -126,3 +165,22 @@ def test_period_metrics_count():
     for p in pm:
         assert "hit_rate" in p
         assert "d_prime" in p
+
+
+# ── Schema regression ─────────────────────────────────────────────────────
+
+def test_metadata_has_no_age_field(tmp_path, monkeypatch):
+    """U3 protocol: age is collected on paper, never in the JSON."""
+    import json
+
+    from cvt_task import save_data
+
+    monkeypatch.chdir(tmp_path)
+    trials = build_trial_sequence("high", test_mode=True)
+    for t in trials:
+        t["outcome"] = "correct_rejection" if not t["is_signal"] else "miss"
+    path = save_data("PTEST", "high", True, trials, "20260506_120000")
+    data = json.loads(path.read_text())
+    assert "age" not in data["metadata"]
+    assert data["metadata"]["participant_id"] == "PTEST"
+    assert data["trial_data"][0]["location"] in STIM_POS

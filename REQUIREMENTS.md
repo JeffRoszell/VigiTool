@@ -19,10 +19,10 @@
 - Executable via command line (`python3 task.py`) or IDE (Spyder, etc.)
 
 ### 1.2 Participant Entry (GUI Dialog at Launch)
-- **Participant ID**: free-text field (e.g., "P001")
-- **Age**: numeric field
-- **Difficulty condition**: dropdown or radio — High / Low
-- **Task order**: managed by experimenter (they choose which script to run first), but selectable at startup for logging purposes
+- **Participant ID**: free-text field — no forced format (per U3 protocol)
+- **Difficulty order**: dropdown — `high → low` or `low → high` (counterbalancing managed by RAs externally)
+- **Task order** (session launcher only): dropdown — `CVT → PVT` or `PVT → CVT`
+- **No additional metadata** is collected in the application. Age group, session number, condition assignment, and experimenter initials are recorded on a paper questionnaire (per U3 protocol).
 
 ### 1.3 Data Output
 - Structured directory: `data/<participant_id>/`
@@ -49,7 +49,7 @@
 - **Critical signals**: Digit difference is 0 or ±1 (e.g., 45→|4-5|=1, 88→|8-8|=0)
 - **Non-signals**: Digit difference > 1 (e.g., 28→|2-8|=6)
 - **Response**: Press SPACEBAR for critical signals only
-- **Stimulus location**: Displayed in one of four screen quadrants (upper-left, upper-right, lower-left, lower-right), randomized with slight positional jitter
+- **Stimulus location**: One of five locations (upper-left, upper-right, lower-left, lower-right, center) — per U3 protocol, central display added to four quadrants. Randomized per trial with positional jitter to avoid order bias.
 
 ### 2.2 Timing
 - **Stimulus duration**: 1000 ms
@@ -61,22 +61,23 @@
 
 ### 2.3 Signal Distribution
 - **Total critical signals per block**: 20
-- **Signals per period**: 5 (evenly distributed)
-- **Signal placement**: Randomized within each period
+- **Signals per period**: 5 — exactly one in each of the 5 locations (4 quadrants + center) per U3 protocol
+- **Signal placement**: Temporally randomized within each period; spatial assignment fixed at one signal per location per period
 - **Signal probability**:
   - High difficulty: ~0.021 (20 signals / ~960 total trials)
   - Low difficulty: ~0.035 (20 signals / ~576 total trials)
 
-### 2.4 Practice Mode (Optional)
-- Offered at startup via checkbox or prompt
-- Shortened version of the real task (~5 minutes, per Claypoole procedure)
-- Same stimulus types and timing as selected difficulty condition
-- Practice data NOT saved to participant data directory (or saved separately with `_practice` suffix)
-- Clear indication to participant that it is practice
+### 2.4 Practice Mode (Single Session at Start)
+- One practice session at the very beginning of the experiment (per U3 protocol)
+- 2.5 minutes at low difficulty, then 2.5 minutes at high difficulty (≈5 min total)
+- Pre-practice intro shows on-screen instructions plus 3 example critical signals
+- Live trials show large-font feedback for every outcome: HIT, FALSE ALARM, MISS, CORRECT
+- Practice data is NOT saved to disk
 
 ### 2.5 Response Window
 - Participant may respond at any time during the stimulus display (1000 ms) or during the subsequent ISI (500 or 1500 ms)
 - Response after stimulus offset but before next stimulus = valid response for that trial
+- A fixation cross (`+`) is shown at screen center throughout the ISI (per U3 protocol)
 
 ### 2.6 Performance Metrics
 - **Hits**: Correct responses to critical signals
@@ -172,7 +173,6 @@ data/
 {
   "metadata": {
     "participant_id": "P001",
-    "age": 22,
     "task": "cvt",
     "difficulty": "high",
     "timestamp": "20260316_140000",
@@ -180,7 +180,8 @@ data/
     "isi_ms": 500,
     "block_duration_minutes": 24,
     "total_signals": 20,
-    "is_practice": false
+    "is_practice": false,
+    "test_mode": false
   },
   "performance": {
     "hits": 0,
@@ -194,7 +195,7 @@ data/
     "mean_rt_hits_ms": 0.0
   },
   "period_performance": [
-    {"period": 1, "hit_rate": 0.0, "fa_rate": 0.0, "d_prime": 0.0, "mean_rt_ms": 0.0}
+    {"period": 1, "hit_rate": 0.0, "false_alarm_rate": 0.0, "d_prime": 0.0, "mean_rt_hits_ms": 0.0}
   ],
   "trial_data": [
     {
@@ -203,7 +204,7 @@ data/
       "time_on_watch_ms": 0.0,
       "stimulus": "45",
       "is_signal": true,
-      "quadrant": "upper_left",
+      "location": "upper_left",
       "response_made": true,
       "reaction_time_ms": 487.3,
       "outcome": "hit"
@@ -212,19 +213,21 @@ data/
 }
 ```
 
+`location` is one of: `upper_left`, `upper_right`, `lower_left`, `lower_right`, `center`. Additional locations may be added in future revisions.
+
 ### 4.3 JSON Schema — PVT
 ```json
 {
   "metadata": {
     "participant_id": "P001",
-    "age": 22,
     "task": "pvt",
     "difficulty": "high",
     "timestamp": "20260316_150000",
     "isi_ms": 500,
     "block_duration_minutes": 24,
     "foreperiod_range_ms": [1000, 10000],
-    "is_practice": false
+    "is_practice": false,
+    "test_mode": false
   },
   "performance": {
     "total_trials": 0,
@@ -260,10 +263,11 @@ data/
 
 ---
 
-## 5. Between-Block Transition
-- After completing one difficulty block, display: "Block complete. Press SPACEBAR when ready to continue."
-- Experimenter manages break duration externally
-- Log the break duration in the data (time between block end and spacebar press)
+## 5. Between-Block and Between-Task Transitions
+- **Between difficulty blocks within a task**: enforced timed 5-minute break with on-screen countdown (per U3 protocol). ESC aborts.
+- **Between tasks (CVT → PVT or PVT → CVT)**: enforced timed 5-minute break with on-screen countdown when launched via `run_session.py`.
+- Per-block results screen is shown after each block; advances on SPACEBAR.
+- **EEG baseline** is recorded once at the start of the session, before the first task. The session launcher displays an EEG-baseline hold screen for the experimenter to confirm before continuing.
 
 ---
 

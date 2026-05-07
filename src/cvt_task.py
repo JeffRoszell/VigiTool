@@ -18,15 +18,20 @@ STIM_DURATION = 1.0           # s
 ISI_S = {"high": 0.5, "low": 1.5}
 BLOCK_MINUTES = {"full": 24, "test": 2}
 NUM_PERIODS = {"full": 4, "test": 2}
-SIGNALS_PER_PERIOD = {"full": 5, "test": 3}
+SIGNALS_PER_PERIOD = 5         # one per location — see STIM_POS
 FEEDBACK_DURATION = 0.3        # s
+PRACTICE_MINUTES_PER_DIFFICULTY = 2.5
+PRACTICE_SIGNALS_PER_DIFFICULTY = 5   # ~2/min — denser than real task for learning
+EXAMPLE_SIGNALS = ("45", "88", "32")  # shown on practice intro
 
-# Quadrant centres in norm units, origin at screen centre
-QUADRANT_POS = {
+# Stimulus positions in norm units, origin at screen centre.
+# Five locations: 4 quadrants + central display (per U3 protocol).
+STIM_POS = {
     "upper_left":  (-0.5,  0.5),
     "upper_right": ( 0.5,  0.5),
     "lower_left":  (-0.5, -0.5),
     "lower_right": ( 0.5, -0.5),
+    "center":      ( 0.0,  0.0),
 }
 JITTER = 0.05   # ± norm units
 
@@ -47,28 +52,41 @@ def _non_signal() -> str:
 
 
 def build_trial_sequence(difficulty: str, test_mode: bool) -> list[dict]:
-    """Pure function — no external deps, directly unit-testable."""
+    """Pure function — no external deps, directly unit-testable.
+
+    Per the U3 protocol, every period contains exactly SIGNALS_PER_PERIOD
+    critical signals, one in each STIM_POS location. Non-signals get a
+    uniformly-random location.
+    """
     mode = "test" if test_mode else "full"
     trial_cycle = STIM_DURATION + ISI_S[difficulty]
     period_s = BLOCK_MINUTES[mode] * 60 / NUM_PERIODS[mode]
     trials_per_period = int(period_s / trial_cycle)
-    sigs = SIGNALS_PER_PERIOD[mode]
+    locations = list(STIM_POS.keys())
+
+    if trials_per_period < SIGNALS_PER_PERIOD:
+        raise ValueError(
+            f"period of {period_s:.0f}s holds only {trials_per_period} trials; "
+            f"need at least {SIGNALS_PER_PERIOD}"
+        )
 
     trials: list[dict] = []
     trial_num = 1
-    quadrants = list(QUADRANT_POS.keys())
 
     for period in range(1, NUM_PERIODS[mode] + 1):
-        signal_slots = set(random.sample(range(trials_per_period), sigs))
+        slot_indices = random.sample(range(trials_per_period), SIGNALS_PER_PERIOD)
+        slot_locations = random.sample(locations, len(locations))
+        signal_slots = dict(zip(slot_indices, slot_locations))
 
         for i in range(trials_per_period):
             is_sig = i in signal_slots
+            loc = signal_slots[i] if is_sig else random.choice(locations)
             trials.append({
                 "trial_number": trial_num,
                 "period": period,
                 "stimulus": _critical_signal() if is_sig else _non_signal(),
                 "is_signal": is_sig,
-                "quadrant": random.choice(quadrants),
+                "location": loc,
                 "time_on_watch_ms": None,
                 "response_made": False,
                 "reaction_time_ms": None,
@@ -76,6 +94,37 @@ def build_trial_sequence(difficulty: str, test_mode: bool) -> list[dict]:
             })
             trial_num += 1
 
+    return trials
+
+
+def build_practice_sequence(difficulty: str) -> list[dict]:
+    """Practice trials over PRACTICE_MINUTES_PER_DIFFICULTY at the given pace.
+
+    Signals are sparse but cover all five locations once each (so the
+    participant sees a critical signal in every screen position at least
+    once during practice).
+    """
+    trial_cycle = STIM_DURATION + ISI_S[difficulty]
+    n_trials = max(
+        PRACTICE_SIGNALS_PER_DIFFICULTY,
+        int(PRACTICE_MINUTES_PER_DIFFICULTY * 60 / trial_cycle),
+    )
+    locations = list(STIM_POS.keys())
+    n_signals = min(PRACTICE_SIGNALS_PER_DIFFICULTY, n_trials, len(locations))
+    slot_indices = random.sample(range(n_trials), n_signals)
+    slot_locations = random.sample(locations, n_signals)
+    signal_slots = dict(zip(slot_indices, slot_locations))
+
+    trials: list[dict] = []
+    for i in range(n_trials):
+        is_sig = i in signal_slots
+        loc = signal_slots[i] if is_sig else random.choice(locations)
+        trials.append({
+            "trial_number": i + 1,
+            "stimulus": _critical_signal() if is_sig else _non_signal(),
+            "is_signal": is_sig,
+            "location": loc,
+        })
     return trials
 
 
@@ -149,7 +198,6 @@ def compute_period_metrics(trials: list[dict], n_periods: int) -> list[dict]:
 
 def save_data(
     participant_id: str,
-    age: int,
     difficulty: str,
     test_mode: bool,
     trials: list[dict],
@@ -164,14 +212,13 @@ def save_data(
     output = {
         "metadata": {
             "participant_id": participant_id,
-            "age": age,
             "task": "cvt",
             "difficulty": difficulty,
             "timestamp": timestamp,
             "stimulus_duration_ms": int(STIM_DURATION * 1000),
             "isi_ms": int(ISI_S[difficulty] * 1000),
             "block_duration_minutes": BLOCK_MINUTES[mode],
-            "total_signals": SIGNALS_PER_PERIOD[mode] * NUM_PERIODS[mode],
+            "total_signals": SIGNALS_PER_PERIOD * NUM_PERIODS[mode],
             "is_practice": False,
             "test_mode": test_mode,
         },
@@ -189,25 +236,31 @@ def save_data(
 # ── PsychoPy display helpers ───────────────────────────────────────────────
 # Imports deferred so pure functions above are testable without PsychoPy.
 
-def _jittered_pos(quadrant: str) -> tuple[float, float]:
-    x, y = QUADRANT_POS[quadrant]
+def _jittered_pos(location: str) -> tuple[float, float]:
+    x, y = STIM_POS[location]
     return (
         x + random.uniform(-JITTER, JITTER),
         y + random.uniform(-JITTER, JITTER),
     )
 
 
-def _instructions(win: visual.Window, difficulty: str, test_mode: bool) -> bool:
-    """Show instructions. Returns False if ESC pressed instead of SPACE."""
+def _instructions(
+    win: visual.Window,
+    difficulty: str,
+    test_mode: bool,
+    block_num: Optional[int] = None,
+) -> bool:
+    """Show pre-block instructions. Returns False if ESC pressed instead of SPACE."""
     from psychopy import event, visual  # noqa: PLC0415
 
     pace = "500 ms blank" if difficulty == "high" else "1500 ms blank"
     mins = BLOCK_MINUTES["test" if test_mode else "full"]
     mode_tag = " [TEST MODE]" if test_mode else ""
+    block_tag = f"Block {block_num} — " if block_num else ""
 
     body = (
         f"COGNITIVE VIGILANCE TASK{mode_tag}\n\n"
-        f"Difficulty: {difficulty.upper()}  ({pace} between stimuli)\n"
+        f"{block_tag}Difficulty: {difficulty.upper()}  ({pace} between stimuli)\n"
         f"Duration: {mins} minutes\n\n"
         "Two-digit numbers will appear one at a time.\n\n"
         "Press SPACEBAR only when the digit difference is 0 or ±1\n"
@@ -221,6 +274,49 @@ def _instructions(win: visual.Window, difficulty: str, test_mode: bool) -> bool:
         color="white", alignText="center",
     )
     msg.draw()
+    win.flip()
+    keys = event.waitKeys(keyList=["space", "escape"])
+    return "escape" not in (keys or [])
+
+
+def _practice_intro(win: visual.Window) -> bool:
+    """Practice intro: instructions + 3 example critical signals. Returns False on ESC."""
+    from psychopy import event, visual  # noqa: PLC0415
+
+    body = (
+        "PRACTICE\n\n"
+        "You will now practice the task for about 5 minutes total\n"
+        "(2.5 min slow, 2.5 min fast).\n\n"
+        "Press SPACEBAR only when the digit difference is 0 or ±1.\n"
+        "Feedback will be shown after each trial.\n\n"
+        "Examples of CRITICAL SIGNALS (press SPACEBAR for these):"
+    )
+    body_obj = visual.TextStim(
+        win, text=body, height=0.055, wrapWidth=1.6,
+        color="white", alignText="center", pos=(0, 0.45),
+    )
+
+    example_objs = []
+    xs = (-0.4, 0.0, 0.4)
+    for x, sig in zip(xs, EXAMPLE_SIGNALS):
+        example_objs.append(
+            visual.TextStim(win, text=sig, height=0.18, color="white",
+                            bold=True, pos=(x, -0.05))
+        )
+        example_objs.append(
+            visual.TextStim(win, text="YES", height=0.06, color="green",
+                            bold=True, pos=(x, -0.25))
+        )
+
+    foot = visual.TextStim(
+        win, text="Press SPACEBAR to begin practice.",
+        height=0.06, color="white", pos=(0, -0.6),
+    )
+
+    body_obj.draw()
+    for o in example_objs:
+        o.draw()
+    foot.draw()
     win.flip()
     keys = event.waitKeys(keyList=["space", "escape"])
     return "escape" not in (keys or [])
@@ -241,7 +337,7 @@ def _results_screen(
     rt_str = f"{perf['mean_rt_hits_ms']:.0f} ms" if perf["mean_rt_hits_ms"] else "—"
 
     lines = [
-        "TASK COMPLETE\n",
+        "BLOCK COMPLETE\n",
         f"Hits:            {perf['hits']} / {n_total}",
         f"False alarms:    {perf['false_alarms']}",
         f"d′:               {perf['d_prime']:.2f}",
@@ -252,7 +348,7 @@ def _results_screen(
     ]
     for p in period_perf:
         lines.append(f"  Period {p['period']}:  {p['hit_rate']:.0%}")
-    lines += ["", f"Saved to: {filename}", "", "Press ESC to exit."]
+    lines += ["", f"Saved to: {filename}", "", "Press SPACEBAR to continue."]
 
     msg = visual.TextStim(
         win, text="\n".join(lines), height=0.055,
@@ -260,7 +356,7 @@ def _results_screen(
     )
     msg.draw()
     win.flip()
-    event.waitKeys(keyList=["escape"])
+    event.waitKeys(keyList=["space", "escape"])
 
 
 # ── Core task loop ─────────────────────────────────────────────────────────
@@ -270,19 +366,32 @@ def run_task(
     trials: list[dict],
     difficulty: str,
     block_clock: core.Clock,
+    show_all_feedback: bool = False,
 ) -> tuple[list[dict], bool]:
-    """Returns (trials_with_outcomes, escaped)."""
+    """Returns (trials_with_outcomes, escaped).
+
+    If show_all_feedback is True (practice mode), feedback is shown for every
+    trial outcome — HIT, FALSE ALARM, MISS, CORRECT REJECTION — in large font.
+    Otherwise only HIT and FALSE ALARM are shown (real-task behaviour).
+    """
     from psychopy import core, event, visual  # noqa: PLC0415
 
     isi_s = ISI_S[difficulty]
 
     stim_obj = visual.TextStim(win, text="", height=0.2, color="white", bold=True)
-    feedback_obj = visual.TextStim(win, text="", height=0.07, pos=(0, -0.85), bold=True)
+    fixation_obj = visual.TextStim(
+        win, text="+", height=0.1, color="white", bold=True, pos=(0, 0),
+    )
+    fb_height = 0.12 if show_all_feedback else 0.07
+    fb_pos = (0, -0.4) if show_all_feedback else (0, -0.85)
+    feedback_obj = visual.TextStim(
+        win, text="", height=fb_height, pos=fb_pos, bold=True,
+    )
 
     for trial in trials:
         event.clearEvents()
 
-        stim_obj.setPos(_jittered_pos(trial["quadrant"]))
+        stim_obj.setPos(_jittered_pos(trial["location"]))
         stim_obj.setText(trial["stimulus"])
         feedback_obj.setText("")
 
@@ -317,8 +426,7 @@ def run_task(
                 feedback_obj.draw()
             win.flip()
 
-        # ── Blank / ISI ────────────────────────────────────────
-        win.flip()
+        # ── Blank / ISI with fixation ──────────────────────────
         isi_end = STIM_DURATION + isi_s
 
         while trial_clock.getTime() < isi_end:
@@ -337,6 +445,7 @@ def run_task(
                         feedback_obj.setColor("red")
                         feedback_obj.setText("FALSE ALARM")
 
+            fixation_obj.draw()
             if responded and response_t is not None and (t_now - response_t) < FEEDBACK_DURATION:
                 feedback_obj.draw()
             win.flip()
@@ -350,7 +459,95 @@ def run_task(
         else:
             trial["outcome"] = "false_alarm" if responded else "correct_rejection"
 
+        # ── Practice-only: feedback for misses & correct rejections ──
+        if show_all_feedback and not responded:
+            if trial["outcome"] == "miss":
+                feedback_obj.setColor("red")
+                feedback_obj.setText("MISS")
+            else:
+                feedback_obj.setColor("white")
+                feedback_obj.setText("CORRECT")
+            fb_end = trial_clock.getTime() + FEEDBACK_DURATION * 2
+            while trial_clock.getTime() < fb_end:
+                for k in event.getKeys(["escape"]):
+                    if k == "escape":
+                        return trials, True
+                fixation_obj.draw()
+                feedback_obj.draw()
+                win.flip()
+
     return trials, False
+
+
+def run_practice(win: visual.Window, test_mode: bool = False) -> bool:
+    """Single practice session: low then high difficulty.
+
+    Returns True if escaped, False on normal completion.
+    """
+    from psychopy import core  # noqa: PLC0415
+
+    if not _practice_intro(win):
+        return True
+
+    for difficulty in ("low", "high"):
+        trials = build_practice_sequence(difficulty)
+        # Practice is short — clock starts fresh per segment
+        clk = core.Clock()
+        clk.reset()
+        _, escaped = run_task(
+            win, trials, difficulty, clk, show_all_feedback=True,
+        )
+        if escaped:
+            return True
+    return False
+
+
+# ── Full session ───────────────────────────────────────────────────────────
+
+def run_full_session(
+    win: visual.Window,
+    participant_id: str,
+    difficulty_order: tuple[str, str],
+    test_mode: bool,
+    timestamp: str,
+    *,
+    skip_practice: bool = False,
+    break_minutes: Optional[float] = None,
+) -> bool:
+    """Run a full CVT session: practice → block1 → break → block2.
+
+    Returns True if escaped.
+    """
+    from psychopy import core  # noqa: PLC0415
+
+    from session_utils import BREAK_MINUTES, timed_break  # noqa: PLC0415
+
+    if not skip_practice and run_practice(win, test_mode=test_mode):
+        return True
+
+    n_periods = NUM_PERIODS["test" if test_mode else "full"]
+    block_clock = core.Clock()
+
+    for block_num, difficulty in enumerate(difficulty_order, start=1):
+        if not _instructions(win, difficulty, test_mode, block_num=block_num):
+            return True
+
+        trials = build_trial_sequence(difficulty, test_mode)
+        block_clock.reset()
+        trials, escaped = run_task(win, trials, difficulty, block_clock)
+
+        filename = save_data(participant_id, difficulty, test_mode, trials, timestamp)
+        if escaped:
+            return True
+
+        _results_screen(win, trials, filename, n_periods)
+
+        if block_num < len(difficulty_order):
+            mins = break_minutes if break_minutes is not None else BREAK_MINUTES
+            if not timed_break(win, minutes=mins, label="BREAK BETWEEN BLOCKS"):
+                return True
+
+    return False
 
 
 # ── Entry point ────────────────────────────────────────────────────────────
@@ -361,8 +558,7 @@ def main() -> None:
 
     info: dict = {
         "Participant ID": "",
-        "Age": "",
-        "Difficulty": ["high", "low"],
+        "Difficulty order": ["high → low", "low → high"],
         "Test mode": False,
     }
     # copyDict=True works around a bug in PsychoPy 2026.1.3 DlgFromDict.show()
@@ -371,7 +567,7 @@ def main() -> None:
     dlg = gui.DlgFromDict(
         info,
         title="CVT",
-        order=["Participant ID", "Age", "Difficulty", "Test mode"],
+        order=["Participant ID", "Difficulty order", "Test mode"],
         sortKeys=False,
         copyDict=True,
     )
@@ -380,16 +576,11 @@ def main() -> None:
 
     result = dlg.dictionary
     participant_id = str(result["Participant ID"]).strip() or "unknown"
-    difficulty = str(result["Difficulty"]).lower()
+    order_str = str(result["Difficulty order"])
     test_mode = bool(result["Test mode"])
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    try:
-        age = int(result["Age"])
-    except ValueError:
-        age = 0
-
-    trials = build_trial_sequence(difficulty, test_mode)
+    difficulty_order = ("high", "low") if order_str.startswith("high") else ("low", "high")
 
     win = _visual.Window(
         fullscr=True,
@@ -397,24 +588,12 @@ def main() -> None:
         units="norm",
         allowGUI=False,
     )
-    block_clock = core.Clock()
-    escaped = False
 
     try:
-        if not _instructions(win, difficulty, test_mode):
-            escaped = True
-        else:
-            block_clock.reset()
-            trials, escaped = run_task(win, trials, difficulty, block_clock)
+        run_full_session(win, participant_id, difficulty_order, test_mode, timestamp)
     finally:
-        filename = save_data(participant_id, age, difficulty, test_mode, trials, timestamp)
-
-    if not escaped:
-        n_periods = NUM_PERIODS["test" if test_mode else "full"]
-        _results_screen(win, trials, filename, n_periods)
-
-    win.close()
-    core.quit()
+        win.close()
+        core.quit()
 
 
 if __name__ == "__main__":
