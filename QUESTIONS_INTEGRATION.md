@@ -83,6 +83,17 @@ These questions arose after confirming the live API is viable. They affect study
 
 17. **Timing-precision target**: What alignment precision is required between the task markers and the EEG/eye-tracking streams for the analyses planned (Engagement Index, Frontal Theta, fixation/saccade events)? This sets the threshold for whether the localhost-TCP path (typically sub-ms) is sufficient or whether we should add a redundant hardware trigger.
 
+18. **Recording continuity**: The Remote Control API starts/stops *all sensors at once* — there is no public way to toggle EEG vs. eye-tracking independently. Should the iMotions recording be:
+    - (a) one continuous recording for the whole session (EEG + eye-tracking active during practice, breaks, and both tasks), or
+    - (b) segmented — start at the beginning of CVT, stop after, restart for PVT?
+    > Option (a) is simpler and gives a continuous EEG baseline across the session; option (b) produces smaller, task-scoped files.
+
+19. **Calibration timing in the session**: Eye-tracker calibration (Tobii 9-point) and B-Alert impedance checks happen through iMotions' own UI before recording starts — PsychoPy can't trigger them mid-session. Confirm the intended session order:
+    - RA seats participant → RA runs Tobii calibration + B-Alert impedance in iMotions → RA launches `run_session.py` → app sends EEG-baseline hold screen → recording proceeds.
+    > Is re-calibration ever needed between blocks (e.g., if the participant shifts position)? If so, the app needs an explicit pause point where the RA can re-enter iMotions.
+
+20. **iMotions study definition ownership**: Using the Remote Control API requires an iMotions study definition (sensor list, recording settings) to already exist by name. Who builds and maintains it? Suggested model: one canonical "Vigilance_CVT_PVT" study, defined once, with a new respondent added per participant. Confirm — and confirm who has admin rights in iMotions to create/edit the study.
+
 ---
 
 *Prepared by Jeff Roszell — March 2026*
