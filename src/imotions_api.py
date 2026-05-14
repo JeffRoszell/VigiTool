@@ -9,10 +9,16 @@ the iMotions Feb 2026 Python reference implementation.
 """
 from __future__ import annotations
 
-import logging  # noqa: F401  (used by client; imported now so test patches resolve)
-import socket  # noqa: F401
+import logging
+import queue
+import socket
+import threading
 
 logger = logging.getLogger(__name__)
+
+# Max queued markers before put_nowait raises. Sized for a worst-case 24-min
+# high-difficulty CVT block (~960 trials × 3 markers ≈ 2880) plus headroom.
+_DEFAULT_QUEUE_MAXSIZE = 8192
 
 
 # Implementations land in Phases 2 (format), 3 (sync client), 4 (async sender),
@@ -81,6 +87,7 @@ class EventReceivingAPI:
         send_timeout: float = 0.05,
         enabled: bool = True,
         async_send: bool = True,
+        queue_maxsize: int = _DEFAULT_QUEUE_MAXSIZE,
     ) -> None:
         self.host = host
         self.port = port
@@ -91,6 +98,8 @@ class EventReceivingAPI:
         self._sock: socket.socket | None = None
         self._connected = False
         self._closed = False
+        self._queue: queue.Queue[bytes | None] = queue.Queue(maxsize=queue_maxsize)
+        self._thread: threading.Thread | None = None
 
     def connect(self) -> bool:
         """Open the TCP socket. Returns True on success, False on failure.
@@ -109,6 +118,13 @@ class EventReceivingAPI:
             self._sock = sock
             self._connected = True
             logger.info("iMotions Event API connected to %s:%d", self.host, self.port)
+            if self.async_send:
+                self._thread = threading.Thread(
+                    target=self._sender_loop,
+                    name="imotions-sender",
+                    daemon=True,
+                )
+                self._thread.start()
             return True
         except OSError as exc:
             logger.warning(
@@ -119,7 +135,7 @@ class EventReceivingAPI:
             self._sock = None
             return False
 
-    def _send(self, payload: bytes) -> None:
+    def _send_sync(self, payload: bytes) -> None:
         """Synchronous send. Errors disable the client and are swallowed."""
         if not self.enabled or self._sock is None:
             return
@@ -134,25 +150,63 @@ class EventReceivingAPI:
                 pass
             self._sock = None
 
-    def discrete(self, name: str, description: str = "") -> None:
+    def _sender_loop(self) -> None:
+        """Daemon thread: drain the queue and send. Stops on sentinel (None)."""
+        while True:
+            try:
+                item = self._queue.get(timeout=0.25)
+            except queue.Empty:
+                if self._closed:
+                    return
+                continue
+            if item is None:
+                return  # sentinel
+            if not self.enabled or self._sock is None:
+                continue  # drain remainder silently
+            try:
+                self._sock.sendall(item)
+            except OSError as exc:
+                logger.warning("iMotions Event API send failed: %s", exc)
+                self.enabled = False
+                try:
+                    self._sock.close()
+                except OSError:
+                    pass
+                self._sock = None
+
+    def _dispatch(self, payload: bytes) -> None:
         if not self.enabled:
             return
-        self._send(format_discrete(name, description))
+        if self.async_send:
+            try:
+                self._queue.put_nowait(payload)
+            except queue.Full:
+                logger.warning("iMotions Event API queue full; disabling client")
+                self.enabled = False
+        else:
+            self._send_sync(payload)
+
+    def discrete(self, name: str, description: str = "") -> None:
+        self._dispatch(format_discrete(name, description))
 
     def scene_start(self, name: str, description: str = "", media: str = "I") -> None:
-        if not self.enabled:
-            return
-        self._send(format_scene_start(name, description, media))
+        self._dispatch(format_scene_start(name, description, media))
 
     def scene_end(self, name: str) -> None:
-        if not self.enabled:
-            return
-        self._send(format_scene_end(name))
+        self._dispatch(format_scene_end(name))
 
     def close(self) -> None:
+        """Stop the sender thread, drain remaining markers, close the socket."""
         if self._closed:
             return
         self._closed = True
+        if self._thread is not None and self._thread.is_alive():
+            try:
+                self._queue.put_nowait(None)  # sentinel
+            except queue.Full:
+                pass
+            self._thread.join(timeout=1.0)
+            self._thread = None
         if self._sock is not None:
             try:
                 self._sock.close()

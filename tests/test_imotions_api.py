@@ -2,13 +2,16 @@
 
 Layer 1 — wire-format unit tests (no sockets, no threads).
 Layer 2 — connection lifecycle (mocked socket, sync send).
-Layer 3 (Phase 4) — socketserver integration tests, added later.
+Layer 3 — async sender round-trip via stdlib socketserver.
 Layer 4 (Phase 5/6) — task injection tests, in test_cvt_trials.py /
 test_pvt_metrics.py via FakeMarkerClient.
 """
 from __future__ import annotations
 
+import socketserver
 import sys
+import threading
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -171,3 +174,112 @@ def test_context_manager_connects_and_closes():
         with EventReceivingAPI(async_send=False) as client:
             client.discrete("inside")
         sock_instance.close.assert_called()
+
+
+# ── Layer 3: async-send round-trip via real socket ─────────────────────────
+
+
+class _RecordingHandler(socketserver.BaseRequestHandler):
+    """TCP handler that appends all received bytes to a shared list."""
+
+    def handle(self) -> None:
+        # cast for type checkers; server is _RecordingServer
+        received: bytearray = self.server.received  # type: ignore[attr-defined]
+        while True:
+            try:
+                chunk = self.request.recv(4096)
+            except OSError:
+                return
+            if not chunk:
+                return
+            received.extend(chunk)
+
+
+class _RecordingServer(socketserver.ThreadingTCPServer):
+    allow_reuse_address = True
+    daemon_threads = True
+
+
+def _start_recording_server() -> tuple[_RecordingServer, threading.Thread, bytearray]:
+    received = bytearray()
+    server = _RecordingServer(("127.0.0.1", 0), _RecordingHandler)
+    server.received = received  # type: ignore[attr-defined]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server, thread, received
+
+
+def _split_markers(raw: bytes) -> list[bytes]:
+    """Split a stream of CRLF-terminated markers; empty trailing entry dropped."""
+    parts = raw.split(b"\r\n")
+    return [p + b"\r\n" for p in parts if p]
+
+
+def test_async_round_trip_delivers_all_markers():
+    server, thread, received = _start_recording_server()
+    port = server.server_address[1]
+    try:
+        client = EventReceivingAPI(host="127.0.0.1", port=port, async_send=True)
+        assert client.connect() is True
+        for i in range(100):
+            client.discrete(f"evt_{i}", f"i={i}")
+        client.close()
+
+        # poll until all 100 CRLF-terminated markers have arrived
+        for _ in range(200):
+            if bytes(received).count(b"\r\n") >= 100:
+                break
+            time.sleep(0.01)
+
+        markers = _split_markers(bytes(received))
+        assert len(markers) == 100
+        # ordering preserved
+        assert markers[0] == b"M;2;;;evt_0;i=0;D;\r\n"
+        assert markers[99] == b"M;2;;;evt_99;i=99;D;\r\n"
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_async_send_does_not_block_main_thread():
+    """1000 enqueues should complete well under 1 second on any reasonable box."""
+    server, thread, received = _start_recording_server()
+    port = server.server_address[1]
+    try:
+        client = EventReceivingAPI(host="127.0.0.1", port=port, async_send=True)
+        assert client.connect() is True
+        t0 = time.perf_counter()
+        for i in range(1000):
+            client.discrete("evt", f"i={i}")
+        elapsed = time.perf_counter() - t0
+        # Generous bound for CI; in practice this completes in <50ms.
+        assert elapsed < 1.0, f"main thread blocked for {elapsed:.2f}s"
+        client.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_async_queue_overflow_disables_client():
+    """Tiny queue + no server-side drain: put_nowait will fail; client disables."""
+    with patch("imotions_api.socket.socket") as mock_sock:
+        sock_instance = MagicMock()
+        mock_sock.return_value = sock_instance
+        # Make sender thread block forever on sendall so the queue can fill.
+        sendall_event = threading.Event()
+
+        def _block(_data: bytes) -> None:
+            sendall_event.wait()
+
+        sock_instance.sendall.side_effect = _block
+        client = EventReceivingAPI(async_send=True, queue_maxsize=3)
+        assert client.connect() is True
+        try:
+            # 1 item gets popped by the sender (and blocks), 3 fit in queue,
+            # any more should trigger the overflow path.
+            for _ in range(50):
+                client.discrete("evt")
+            assert client.enabled is False
+        finally:
+            sendall_event.set()
+            client.close()
