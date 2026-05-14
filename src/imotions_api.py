@@ -13,6 +13,8 @@ import logging
 import queue
 import socket
 import threading
+import time
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +92,73 @@ class NoOpMarkerClient:
 
     def close(self) -> None:
         return None
+
+
+# ── Logging marker client (tee) ────────────────────────────────────────────
+
+
+class LoggingMarkerClient:
+    """Wraps a marker client and tees every call to a local log file.
+
+    Useful when iMotions misbehaves on the lab machine: a sidecar log
+    captures exactly what the task tried to send, with perf_counter
+    timestamps, regardless of whether iMotions actually received it.
+    Fail-soft on the file side — a broken log file does not stop marker
+    delivery to the wrapped client.
+    """
+
+    def __init__(self, inner, log_path) -> None:
+        self.inner = inner
+        self.log_path = Path(log_path)
+        self._fh = None
+        try:
+            self.log_path.parent.mkdir(parents=True, exist_ok=True)
+            self._fh = self.log_path.open("a", buffering=1, encoding="utf-8")
+            self._fh.write(f"# imotions marker log opened {time.time():.6f}\n")
+        except OSError as exc:
+            logger.warning("LoggingMarkerClient could not open %s: %s", log_path, exc)
+            self._fh = None
+
+    @property
+    def enabled(self) -> bool:
+        return getattr(self.inner, "enabled", False)
+
+    def _write(self, kind: str, *args) -> None:
+        if self._fh is None:
+            return
+        try:
+            ts = time.perf_counter()
+            self._fh.write(f"{ts:.6f}\t{kind}\t{args!r}\n")
+        except OSError:
+            self._fh = None
+
+    def connect(self) -> bool:
+        ok = bool(self.inner.connect()) if hasattr(self.inner, "connect") else False
+        self._write("connect", ok)
+        return ok
+
+    def discrete(self, name: str, description: str = "") -> None:
+        self._write("discrete", name, description)
+        self.inner.discrete(name, description)
+
+    def scene_start(self, name: str, description: str = "", media: str = "I") -> None:
+        self._write("scene_start", name, description, media)
+        self.inner.scene_start(name, description, media)
+
+    def scene_end(self, name: str) -> None:
+        self._write("scene_end", name)
+        self.inner.scene_end(name)
+
+    def close(self) -> None:
+        if self._fh is not None:
+            try:
+                self._fh.write(f"# imotions marker log closed {time.time():.6f}\n")
+                self._fh.close()
+            except OSError:
+                pass
+            self._fh = None
+        if hasattr(self.inner, "close"):
+            self.inner.close()
 
 
 # ── Event Receiving API client (Phases 3-4) ────────────────────────────────

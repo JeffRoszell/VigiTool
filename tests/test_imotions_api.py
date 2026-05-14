@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from imotions_api import (  # noqa: E402
     EventReceivingAPI,
+    LoggingMarkerClient,
     RemoteControlAPI,
     format_cancel_study,
     format_discrete,
@@ -390,3 +391,91 @@ def test_remote_close_is_idempotent():
         client.connect()
         client.close()
         client.close()  # must not raise
+
+
+# ── LoggingMarkerClient (sidecar tee) ──────────────────────────────────────
+
+
+class _RecordingFake:
+    """Marker-client stand-in that records every call."""
+
+    enabled = True
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def connect(self) -> bool:
+        self.calls.append(("connect",))
+        return True
+
+    def discrete(self, name, description=""):
+        self.calls.append(("discrete", name, description))
+
+    def scene_start(self, name, description="", media="I"):
+        self.calls.append(("scene_start", name, description, media))
+
+    def scene_end(self, name):
+        self.calls.append(("scene_end", name))
+
+    def close(self):
+        self.calls.append(("close",))
+
+
+def test_logging_client_tees_to_file_and_inner(tmp_path):
+    inner = _RecordingFake()
+    log = tmp_path / "subdir" / "session.log"  # parent doesn't exist yet
+    client = LoggingMarkerClient(inner, log)
+    client.connect()
+    client.scene_start("blk")
+    client.discrete("evt", "rt=200")
+    client.scene_end("blk")
+    client.close()
+
+    # inner saw every call in order
+    assert inner.calls == [
+        ("connect",),
+        ("scene_start", "blk", "", "I"),
+        ("discrete", "evt", "rt=200"),
+        ("scene_end", "blk"),
+        ("close",),
+    ]
+
+    # log file exists, has header + closed footer + one line per call
+    text = log.read_text()
+    assert text.startswith("# imotions marker log opened ")
+    assert "scene_start" in text
+    assert "discrete" in text
+    assert "scene_end" in text
+    assert "# imotions marker log closed " in text
+
+
+def test_logging_client_survives_unwritable_parent(tmp_path):
+    """If the log file can't be opened, marker delivery to inner must continue."""
+    # An existing file used as a parent path makes mkdir(parents=True) fail.
+    blocker = tmp_path / "blocker_file"
+    blocker.write_text("x")
+    log = blocker / "sub" / "session.log"
+
+    inner = _RecordingFake()
+    client = LoggingMarkerClient(inner, log)
+    client.discrete("evt")
+    client.scene_start("blk")
+    client.scene_end("blk")
+    client.close()
+
+    # All calls still reached the inner client.
+    assert inner.calls == [
+        ("discrete", "evt", ""),
+        ("scene_start", "blk", "", "I"),
+        ("scene_end", "blk"),
+        ("close",),
+    ]
+    assert not log.exists()
+
+
+def test_logging_client_enabled_property_mirrors_inner():
+    inner = _RecordingFake()
+    client = LoggingMarkerClient(inner, "/dev/null")
+    assert client.enabled is True
+    inner.enabled = False
+    assert client.enabled is False

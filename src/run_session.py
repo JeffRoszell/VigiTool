@@ -18,12 +18,13 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import cvt_task
 import imotions_config
 import pvt_task
-from imotions_api import EventReceivingAPI, RemoteControlAPI
+from imotions_api import EventReceivingAPI, LoggingMarkerClient, RemoteControlAPI
 from session_utils import BREAK_MINUTES, message_screen, timed_break
 
 logger = logging.getLogger(__name__)
@@ -61,11 +62,14 @@ def run(
     # ── iMotions setup ─────────────────────────────────────────────
     # One continuous Event Receiving API connection spans the whole
     # session (per PI decision May 2026). Remote Control API is opened
-    # only if the feature flag is on.
-    event_client = EventReceivingAPI(
+    # only if the feature flag is on. The marker stream is teed to a
+    # per-session sidecar log for post-hoc debugging of iMotions issues.
+    raw_event_client = EventReceivingAPI(
         host=cfg.host, port=cfg.event_port, enabled=cfg.event_enabled,
     )
-    event_client.connect()
+    raw_event_client.connect()
+    log_path = Path("data") / participant_id / f"session_{timestamp}.imotions.log"
+    event_client = LoggingMarkerClient(raw_event_client, log_path)
 
     remote_client: RemoteControlAPI | None = None
     if cfg.remote_enabled:
