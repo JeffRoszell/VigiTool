@@ -82,22 +82,84 @@ class EventReceivingAPI:
         enabled: bool = True,
         async_send: bool = True,
     ) -> None:
-        raise NotImplementedError
+        self.host = host
+        self.port = port
+        self.connect_timeout = connect_timeout
+        self.send_timeout = send_timeout
+        self.enabled = enabled
+        self.async_send = async_send
+        self._sock: socket.socket | None = None
+        self._connected = False
+        self._closed = False
 
     def connect(self) -> bool:
-        raise NotImplementedError
+        """Open the TCP socket. Returns True on success, False on failure.
+
+        Failure flips ``enabled`` to False so subsequent sends are no-ops.
+        """
+        if not self.enabled:
+            return False
+        if self._connected:
+            return True
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(self.connect_timeout)
+            sock.connect((self.host, self.port))
+            sock.settimeout(self.send_timeout)
+            self._sock = sock
+            self._connected = True
+            logger.info("iMotions Event API connected to %s:%d", self.host, self.port)
+            return True
+        except OSError as exc:
+            logger.warning(
+                "iMotions Event API connect failed (%s:%d): %s",
+                self.host, self.port, exc,
+            )
+            self.enabled = False
+            self._sock = None
+            return False
+
+    def _send(self, payload: bytes) -> None:
+        """Synchronous send. Errors disable the client and are swallowed."""
+        if not self.enabled or self._sock is None:
+            return
+        try:
+            self._sock.sendall(payload)
+        except OSError as exc:
+            logger.warning("iMotions Event API send failed: %s", exc)
+            self.enabled = False
+            try:
+                self._sock.close()
+            except OSError:
+                pass
+            self._sock = None
 
     def discrete(self, name: str, description: str = "") -> None:
-        raise NotImplementedError
+        if not self.enabled:
+            return
+        self._send(format_discrete(name, description))
 
     def scene_start(self, name: str, description: str = "", media: str = "I") -> None:
-        raise NotImplementedError
+        if not self.enabled:
+            return
+        self._send(format_scene_start(name, description, media))
 
     def scene_end(self, name: str) -> None:
-        raise NotImplementedError
+        if not self.enabled:
+            return
+        self._send(format_scene_end(name))
 
     def close(self) -> None:
-        raise NotImplementedError
+        if self._closed:
+            return
+        self._closed = True
+        if self._sock is not None:
+            try:
+                self._sock.close()
+            except OSError:
+                pass
+            self._sock = None
+        self._connected = False
 
     def __enter__(self) -> "EventReceivingAPI":
         self.connect()
