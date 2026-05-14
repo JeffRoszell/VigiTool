@@ -6,7 +6,9 @@ import random
 import statistics
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+from imotions_api import NoOpMarkerClient
 
 if TYPE_CHECKING:
     from psychopy import core, visual  # type stubs only — not imported at runtime
@@ -22,6 +24,48 @@ NUM_PERIODS = {"full": 4, "test": 2}
 VALID_RT_MIN_MS = 100.0                  # < this = anticipatory
 LAPSE_THRESHOLD_MS = 500.0              # > this = lapse
 FEEDBACK_DURATION = 1.0                  # s — how long RT is shown
+
+
+# ── iMotions marker labels ─────────────────────────────────────────────────
+
+
+class PvtMarkerEmitter:
+    """Translates PVT events into iMotions marker calls.
+
+    Owns the label-string contract for PVT. Same construction pattern as
+    CvtMarkerEmitter — tests exercise this directly with a fake client.
+    """
+
+    def __init__(self, client: Any | None = None) -> None:
+        self.client = client if client is not None else NoOpMarkerClient()
+
+    def block_start(self, difficulty: str) -> None:
+        self.client.scene_start(f"pvt_{difficulty}_block")
+
+    def block_end(self, difficulty: str) -> None:
+        self.client.scene_end(f"pvt_{difficulty}_block")
+
+    def period(self, period_num: int) -> None:
+        self.client.discrete(f"pvt_period_{period_num}")
+
+    def stim_onset(self, trial_num: int, period: int) -> None:
+        self.client.scene_start("pvt_stim", f"trial={trial_num},period={period}")
+
+    def stim_offset(self) -> None:
+        self.client.scene_end("pvt_stim")
+
+    def response(
+        self, trial_num: int, rt_ms: Optional[float], response_type: str
+    ) -> None:
+        rt_str = f"{rt_ms:.1f}" if rt_ms is not None else "none"
+        self.client.discrete(
+            "pvt_response",
+            f"rt={rt_str},type={response_type},trial={trial_num}",
+        )
+
+    def anticipatory(self, phase: str) -> None:
+        """Press during ISI or foreperiod (no stimulus on screen yet)."""
+        self.client.discrete("pvt_anticipatory", f"phase={phase}")
 
 
 # ── Metrics ────────────────────────────────────────────────────────────────
@@ -217,9 +261,13 @@ def run_task(
     block_clock: core.Clock,
     n_periods: int,
     block_s: float,
+    emitter: Optional[PvtMarkerEmitter] = None,
 ) -> tuple[list[dict], int, bool]:
     """Returns (trials, pre_stim_anticipatory_count, escaped)."""
     from psychopy import core, event, visual  # noqa: PLC0415
+
+    if emitter is None:
+        emitter = PvtMarkerEmitter()
 
     isi_s = ISI_S[difficulty]
     period_s = block_s / n_periods
@@ -235,6 +283,7 @@ def run_task(
     trial_num = 1
     pre_stim_anticipatory = 0
     first_trial = True
+    prev_period: Optional[int] = None
 
     while block_clock.getTime() < block_s:
 
@@ -253,6 +302,7 @@ def run_task(
                         return trials, pre_stim_anticipatory, True
                     if k == "space":
                         pre_stim_anticipatory += 1
+                        emitter.anticipatory("isi")
                         too_early_until = t_now + 0.5
                 if t_now < too_early_until:
                     too_early_obj.draw()
@@ -276,6 +326,7 @@ def run_task(
                     return trials, pre_stim_anticipatory, True
                 if k == "space":
                     pre_stim_anticipatory += 1
+                    emitter.anticipatory("foreperiod")
                     too_early_until = t_now + 0.5
             fixation.draw()
             if t_now < too_early_until:
@@ -288,9 +339,13 @@ def run_task(
         # ── Red circle ─────────────────────────────────────
         stim_onset = block_clock.getTime()
         period = min(int(stim_onset / period_s) + 1, n_periods)
+        if period != prev_period:
+            emitter.period(period)
+            prev_period = period
 
         circle.draw()
         win.flip()
+        emitter.stim_onset(trial_num, period)
         rt_clock = core.Clock()
 
         responded = False
@@ -309,6 +364,8 @@ def run_task(
                 break
             circle.draw()
             win.flip()
+
+        emitter.stim_offset()
 
         # ── Classify response ──────────────────────────────
         if not responded:
@@ -331,6 +388,8 @@ def run_task(
             lapse = False
             fb_color = "white"
             fb_text = f"{int(rt_ms)} ms"
+
+        emitter.response(trial_num, rt_ms, response_type)
 
         # ── Feedback ───────────────────────────────────────
         feedback_obj.setColor(fb_color)
@@ -371,6 +430,7 @@ def run_full_session(
     timestamp: str,
     *,
     break_minutes: Optional[float] = None,
+    marker_client: Any | None = None,
 ) -> bool:
     """Run a full PVT session: block1 → break → block2.
 
@@ -379,6 +439,8 @@ def run_full_session(
     from psychopy import core  # noqa: PLC0415
 
     from session_utils import BREAK_MINUTES, timed_break  # noqa: PLC0415
+
+    emitter = PvtMarkerEmitter(marker_client)
 
     mode = "test" if test_mode else "full"
     n_periods = NUM_PERIODS[mode]
@@ -390,9 +452,14 @@ def run_full_session(
             return True
 
         block_clock.reset()
-        trials, pre_stim_anticipatory, escaped = run_task(
-            win, difficulty, block_clock, n_periods, block_s,
-        )
+        emitter.block_start(difficulty)
+        try:
+            trials, pre_stim_anticipatory, escaped = run_task(
+                win, difficulty, block_clock, n_periods, block_s,
+                emitter=emitter,
+            )
+        finally:
+            emitter.block_end(difficulty)
 
         filename = save_data(
             participant_id, difficulty, test_mode,
