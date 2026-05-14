@@ -20,23 +20,40 @@ logger = logging.getLogger(__name__)
 # cleanly and assertions fail with NotImplementedError.
 
 
-# ── Wire format (Phase 2) ──────────────────────────────────────────────────
+# ── Wire format ────────────────────────────────────────────────────────────
+#
+# Marker shapes (semicolon-delimited, CRLF-terminated, 8 fields each):
+#   Discrete:     M;2;;;<name>;<description>;D;\r\n
+#   Scene start:  M;2;;;<name>;<description>;N;<I|V>\r\n
+#   Scene end:    M;2;;;<name>;;E;\r\n
+# Field positions: 1=M, 2=API version, 3-4=reserved, 5=name, 6=description,
+# 7=type code (D/N/E), 8=media hint (I/V for scene start, empty otherwise).
 
 
 def _sanitize(field: str) -> str:
-    raise NotImplementedError
+    """Strip characters that would corrupt the wire format.
+
+    ';' is the field delimiter — replace with '_'.
+    '\\r' and '\\n' would create spurious record terminators — drop them.
+    """
+    return field.replace(";", "_").replace("\r", "").replace("\n", "")
 
 
 def format_discrete(name: str, description: str = "") -> bytes:
-    raise NotImplementedError
+    line = f"M;2;;;{_sanitize(name)};{_sanitize(description)};D;\r\n"
+    return line.encode("utf-8")
 
 
 def format_scene_start(name: str, description: str = "", media: str = "I") -> bytes:
-    raise NotImplementedError
+    if media not in ("I", "V"):
+        raise ValueError(f"media must be 'I' or 'V', got {media!r}")
+    line = f"M;2;;;{_sanitize(name)};{_sanitize(description)};N;{media}\r\n"
+    return line.encode("utf-8")
 
 
 def format_scene_end(name: str) -> bytes:
-    raise NotImplementedError
+    line = f"M;2;;;{_sanitize(name)};;E;\r\n"
+    return line.encode("utf-8")
 
 
 # ── Event Receiving API client (Phases 3-4) ────────────────────────────────
