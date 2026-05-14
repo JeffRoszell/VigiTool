@@ -62,6 +62,36 @@ def format_scene_end(name: str) -> bytes:
     return line.encode("utf-8")
 
 
+# ── No-op marker client (default for tests and disabled runs) ─────────────
+
+
+class NoOpMarkerClient:
+    """Drop-in marker client whose methods do nothing.
+
+    Used as the default in task code so callers can omit a client entirely
+    and the task simply runs without emitting markers.
+    """
+
+    enabled = False
+
+    def connect(self) -> bool:
+        return False
+
+    def discrete(self, name: str, description: str = "") -> None:  # noqa: ARG002
+        return None
+
+    def scene_start(
+        self, name: str, description: str = "", media: str = "I"
+    ) -> None:  # noqa: ARG002
+        return None
+
+    def scene_end(self, name: str) -> None:  # noqa: ARG002
+        return None
+
+    def close(self) -> None:
+        return None
+
+
 # ── Event Receiving API client (Phases 3-4) ────────────────────────────────
 
 

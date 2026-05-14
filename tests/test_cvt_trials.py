@@ -8,6 +8,7 @@ from cvt_task import (
     NUM_PERIODS,
     SIGNALS_PER_PERIOD,
     STIM_POS,
+    CvtMarkerEmitter,
     _critical_signal,
     _non_signal,
     build_practice_sequence,
@@ -167,7 +168,103 @@ def test_period_metrics_count():
         assert "d_prime" in p
 
 
+# ── iMotions marker emitter (Layer 4) ─────────────────────────────────────
+
+
+class _FakeMarkerClient:
+    """Records every marker call so tests can assert sequence/content."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def discrete(self, name, description=""):
+        self.calls.append(("discrete", name, description))
+
+    def scene_start(self, name, description="", media="I"):
+        self.calls.append(("scene_start", name, description, media))
+
+    def scene_end(self, name):
+        self.calls.append(("scene_end", name))
+
+
+def test_emitter_default_is_noop():
+    em = CvtMarkerEmitter()
+    em.block_start("high")
+    em.stim_onset({"is_signal": True, "trial_number": 1, "period": 1})
+    em.response({"is_signal": True, "trial_number": 1}, rt_ms=200.0)
+    em.stim_offset({"is_signal": True, "trial_number": 1, "period": 1})
+    em.block_end("high")
+    # Just check nothing raised; default client is a NoOpMarkerClient.
+
+
+def test_emitter_block_pair():
+    fake = _FakeMarkerClient()
+    em = CvtMarkerEmitter(fake)
+    em.block_start("high")
+    em.block_end("high")
+    assert fake.calls == [
+        ("scene_start", "cvt_high_block", "", "I"),
+        ("scene_end", "cvt_high_block"),
+    ]
+
+
+def test_emitter_practice_pair_per_difficulty():
+    fake = _FakeMarkerClient()
+    em = CvtMarkerEmitter(fake)
+    em.practice_start("low")
+    em.practice_end("low")
+    em.practice_start("high")
+    em.practice_end("high")
+    assert fake.calls == [
+        ("scene_start", "cvt_practice_low", "", "I"),
+        ("scene_end", "cvt_practice_low"),
+        ("scene_start", "cvt_practice_high", "", "I"),
+        ("scene_end", "cvt_practice_high"),
+    ]
+
+
+def test_emitter_stim_onset_distinguishes_signal_kind():
+    fake = _FakeMarkerClient()
+    em = CvtMarkerEmitter(fake)
+    em.stim_onset({"is_signal": True, "trial_number": 5, "period": 2})
+    em.stim_onset({"is_signal": False, "trial_number": 6, "period": 2})
+    assert fake.calls == [
+        ("scene_start", "cvt_signal_stim", "trial=5,period=2", "I"),
+        ("scene_start", "cvt_nonsignal_stim", "trial=6,period=2", "I"),
+    ]
+
+
+def test_emitter_stim_offset_matches_onset_name():
+    fake = _FakeMarkerClient()
+    em = CvtMarkerEmitter(fake)
+    em.stim_offset({"is_signal": True, "trial_number": 5, "period": 2})
+    em.stim_offset({"is_signal": False, "trial_number": 6, "period": 2})
+    assert fake.calls == [
+        ("scene_end", "cvt_signal_stim"),
+        ("scene_end", "cvt_nonsignal_stim"),
+    ]
+
+
+def test_emitter_response_carries_rt_and_kind():
+    fake = _FakeMarkerClient()
+    em = CvtMarkerEmitter(fake)
+    em.response({"is_signal": True, "trial_number": 7}, rt_ms=423.5)
+    em.response({"is_signal": False, "trial_number": 8}, rt_ms=512.0)
+    assert fake.calls == [
+        ("discrete", "cvt_response", "rt=423.5,trial=7,kind=signal"),
+        ("discrete", "cvt_response", "rt=512.0,trial=8,kind=nonsignal"),
+    ]
+
+
+def test_emitter_period_marker():
+    fake = _FakeMarkerClient()
+    em = CvtMarkerEmitter(fake)
+    em.period(3)
+    assert fake.calls == [("discrete", "cvt_period_3", "")]
+
+
 # ── Schema regression ─────────────────────────────────────────────────────
+
 
 def test_metadata_has_no_age_field(tmp_path, monkeypatch):
     """U3 protocol: age is collected on paper, never in the JSON."""
