@@ -8,8 +8,10 @@
 
 ---
 
-## Status: Planning Phase
-This is a separate development phase from the core CVT/PVT task software. Implementation depends on answers from `QUESTIONS_INTEGRATION.md`.
+## Status: Phase 2 Implemented (Pending Lab E2E)
+The marker streaming path is implemented and unit-tested. The Remote Control
+client is implemented behind a feature flag (default off). The remaining work
+is end-to-end validation on the lab machine — see `docs/imotions_e2e_test_plan.md`.
 
 ---
 
@@ -43,13 +45,15 @@ Even before hardware integration, the task software should maintain a high-preci
 - Timestamp (ms precision, relative to block start)
 - Trial metadata (signal/non-signal, quadrant, stimulus value, difficulty)
 
-### 2.2 Marker Interface (Future)
-- Abstract marker interface in the code that can be connected to:
-  - LSL (Lab Streaming Layer) — likely candidate for B-Alert
-  - Tobii Pro SDK — for Tobii Pro Fusion
-  - Serial/TTL — if hardware supports it
-  - UDP — if network-based
-- The interface should be pluggable so integration doesn't require rewriting task logic
+### 2.2 Marker Interface (Implemented — May 2026)
+- Implemented as `src/imotions_api.py` (`EventReceivingAPI`, `RemoteControlAPI`,
+  `LoggingMarkerClient`, `NoOpMarkerClient`) and per-task emitter classes
+  (`CvtMarkerEmitter`, `PvtMarkerEmitter`) that own the label-string contract.
+- Stdlib `socket` + `threading` + `queue` only — no new runtime deps.
+- The task functions accept a `marker_client` argument and default to a no-op,
+  so tests and dev runs continue to work without iMotions.
+- LSL / Tobii SDK / TTL / UDP are no longer in scope: all biosensor sync runs
+  through iMotions.
 
 ---
 
@@ -153,10 +157,85 @@ The April 2026 marker-format table in this section was wrong. It listed discrete
 
 ---
 
-## 6. Open Items
-- Remaining items in `QUESTIONS_INTEGRATION.md` (Smarteye role, timing precision, lab specs, installed iMotions version) must be resolved before full implementation
-- Hardware access on the lab machine needed for end-to-end testing
-- No non-standard Python packages required for the marker path — stdlib `socket` is sufficient
+## 6. Implementation Notes (Phase 2 — May 2026)
+
+### 6.1 Modules
+
+| File | Purpose |
+|------|---------|
+| `src/imotions_api.py` | `EventReceivingAPI` (8089), `RemoteControlAPI` (8087), `LoggingMarkerClient`, `NoOpMarkerClient`, wire-format helpers |
+| `src/imotions_config.py` | Env-var driven config (host, ports, feature flags, study name) |
+| `src/cvt_task.py` | Adds `CvtMarkerEmitter`; `run_task` / `run_practice` / `run_full_session` accept an `emitter` / `marker_client` argument |
+| `src/pvt_task.py` | Adds `PvtMarkerEmitter`; same wiring pattern as CVT |
+| `src/run_session.py` | Opens one continuous Event Receiving connection across the whole session, optionally opens Remote Control, wraps everything in `session_<pid>_<ts>` scene, tears down in `finally` |
+
+### 6.2 Design choices (locked with PI, May 2026)
+
+| Decision | Choice |
+|----------|--------|
+| Recording continuity (Q18) | One continuous Event Receiving recording across the whole session |
+| Remote Control (Q12) | Built but feature-flagged off (default); RA starts iMotions manually until verified |
+| Marker granularity per trial (Q14) | Most granular: `scene_start` (onset) + `scene_end` (offset) + discrete `response` |
+| Signal vs non-signal labels (Q15) | Distinguish (`cvt_signal_stim`, `cvt_nonsignal_stim`) |
+| Failure tolerance (Q16) | Continue with warning logged locally; behavioral JSON is the primary record |
+
+### 6.3 Async, fail-soft sender
+
+`EventReceivingAPI` runs a daemon thread + bounded `queue.Queue` (default 8192 slots).
+Marker calls in the trial loop enqueue bytes and return; the worker drains and
+`sendall`s. Any socket error (connect or send) flips `enabled=False`, closes the
+socket, and silently drops subsequent calls. The trial loop never sees an exception.
+
+### 6.4 Per-trial marker label set
+
+CVT:
+- `cvt_<difficulty>_block` — scene pair (per block)
+- `cvt_practice_<difficulty>` — scene pair (each practice segment)
+- `cvt_period_<n>` — discrete, on first trial of each new period
+- `cvt_signal_stim` / `cvt_nonsignal_stim` — scene pair (per trial)
+- `cvt_response` — discrete with `rt=<ms>,trial=<n>,kind=signal|nonsignal`
+
+PVT:
+- `pvt_<difficulty>_block` — scene pair (per block)
+- `pvt_period_<n>` — discrete, on first trial of each new period
+- `pvt_stim` — scene pair (per trial; description `trial=<n>,period=<p>`)
+- `pvt_response` — discrete with `rt=<ms|none>,type=valid|lapse|anticipatory|timeout,trial=<n>`
+- `pvt_anticipatory` — discrete on pre-stim press, `phase=isi|foreperiod`
+
+Session-level:
+- `session_<pid>_<ts>` — scene pair wrapping the whole run
+- `session_break_start` / `session_break_end` — discrete around the 5-min inter-task break
+
+### 6.5 Configuration
+
+Env vars (see `src/imotions_config.py`):
+- `IMOTIONS_ENABLED` (default `1`)
+- `IMOTIONS_REMOTE_ENABLED` (default `0`)
+- `IMOTIONS_HOST` (default `127.0.0.1`)
+- `IMOTIONS_EVENT_PORT` (default `8089`)
+- `IMOTIONS_REMOTE_PORT` (default `8087`)
+- `IMOTIONS_STUDY_NAME` (default `Vigilance_CVT_PVT`)
+
+### 6.6 Sidecar log
+
+`run_session` writes a per-session marker log to
+`data/<pid>/session_<ts>.imotions.log`. Every marker call is recorded with a
+`perf_counter` timestamp regardless of whether iMotions actually received it —
+useful for post-hoc debugging of clock skew or dropped markers.
+
+---
+
+## 7. Open Items
+- **Remote Control wire format**: documented `R;1;;<CMD>;...;\r\n` shape needs
+  verification against the Feb 2026 `control_imotions.py` reference on the lab
+  machine. The class is protocol-agnostic — only the `format_*` helpers need
+  updating if the format differs.
+- **Smarteye role** (`QUESTIONS_INTEGRATION.md` Q3) still open.
+- **Timing-precision target** (Q8/Q17) still open; current path is sub-ms
+  on localhost TCP and is unlikely to be the bottleneck.
+- **iMotions software version on lab machine** (Q10) needs confirmation.
+- Hardware access on the lab machine needed for end-to-end testing — see
+  `docs/imotions_e2e_test_plan.md`.
 
 ## 7. File-Import Fallback
 

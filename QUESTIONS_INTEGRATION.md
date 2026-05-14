@@ -64,7 +64,7 @@ These questions arose after confirming the live API is viable. They affect study
 12. **Who starts and stops the iMotions recording?** Two options:
     - (a) RA clicks "Start" in iMotions, then launches `run_session.py`. Task software only sends markers into an already-running recording.
     - (b) `run_session.py` uses the Remote Control API (port 8087) to start the iMotions study automatically when the participant clicks Continue.
-    > Option (a) is simpler and lower-risk; option (b) reduces RA workload and timing variability. Confirm preference.
+    > **Resolved (May 2026)**: Both paths are built. The Remote Control client is implemented but feature-flagged **off** by default (`IMOTIONS_REMOTE_ENABLED=0`). Production runs use option (a) until the Remote Control wire format is verified on the lab machine — then the flag can be flipped without code changes.
 
 13. **Per-participant iMotions setup**: Will each participant be a new "respondent" inside one shared iMotions study, or will a new iMotions study be created per session? This determines whether the task script needs to pass a respondent name through the Remote Control API or whether the RA enters it in iMotions before launching the task.
 
@@ -72,21 +72,22 @@ These questions arose after confirming the live API is viable. They affect study
     - (a) only stimulus onset (and the local JSON has the rest)
     - (b) onset + offset as a paired scene start/end ("range marker")
     - (c) onset, offset, and a separate response marker
-    > More markers = more granular ERP analysis but a denser, harder-to-read iMotions timeline. Recommend (a) for non-signal trials and (c) for signal trials, but confirm.
+    > **Resolved (May 2026)**: Option (c) — most granular. Every trial emits a `scene_start`/`scene_end` pair around the stimulus plus a discrete `response` marker on keypress. Worst-case ~12k markers per session is trivial for TCP localhost; if the iMotions timeline becomes unreadable the emitter can be collapsed to (a) without changing trial code.
 
 15. **Signal vs. non-signal labels in CVT markers**: Should the marker name distinguish trial type (`cvt_signal_onset` vs. `cvt_nonsignal_onset`)? This makes ERP epoching trivial but reveals trial type in the iMotions timeline (acceptable for offline analysis; only matters if anyone observes the recording live).
+    > **Resolved (May 2026)**: Distinguish — `CvtMarkerEmitter` emits `cvt_signal_stim` vs `cvt_nonsignal_stim`. Live observation is not part of the study protocol so timeline visibility is acceptable.
 
 16. **Failure tolerance**: If iMotions is not running, or the TCP connection drops mid-block, should the task:
     - (a) abort the block immediately (preserves biosensor coverage but loses behavioral data)
     - (b) continue with a warning logged locally (preserves behavioral data; biosensor alignment may be partially recoverable post-hoc)
-    > Recommend (b) — local JSON is the primary record for behavioral metrics regardless of biosensor state.
+    > **Resolved (May 2026)**: Option (b) — implemented as the fail-soft pattern in `EventReceivingAPI` and `RemoteControlAPI`. Any socket error flips `enabled=False`, logs a warning, and the trial loop continues. The behavioral JSON is the primary record.
 
 17. **Timing-precision target**: What alignment precision is required between the task markers and the EEG/eye-tracking streams for the analyses planned (Engagement Index, Frontal Theta, fixation/saccade events)? This sets the threshold for whether the localhost-TCP path (typically sub-ms) is sufficient or whether we should add a redundant hardware trigger.
 
 18. **Recording continuity**: The Remote Control API starts/stops *all sensors at once* — there is no public way to toggle EEG vs. eye-tracking independently. Should the iMotions recording be:
     - (a) one continuous recording for the whole session (EEG + eye-tracking active during practice, breaks, and both tasks), or
     - (b) segmented — start at the beginning of CVT, stop after, restart for PVT?
-    > Option (a) is simpler and gives a continuous EEG baseline across the session; option (b) produces smaller, task-scoped files.
+    > **Resolved (May 2026)**: Option (a) — one continuous recording. `run_session` opens the Event Receiving connection once after the EEG baseline hold and wraps the whole run in a `session_<pid>_<ts>` scene. The inter-task break is bracketed by `session_break_start`/`session_break_end` discrete markers for offline epoching.
 
 19. **Calibration timing in the session**: Eye-tracker calibration (Tobii 9-point) and B-Alert impedance checks happen through iMotions' own UI before recording starts — PsychoPy can't trigger them mid-session. Confirm the intended session order:
     - RA seats participant → RA runs Tobii calibration + B-Alert impedance in iMotions → RA launches `run_session.py` → app sends EEG-baseline hold screen → recording proceeds.
@@ -99,3 +100,4 @@ These questions arose after confirming the live API is viable. They affect study
 *Prepared by Jeff Roszell — March 2026*
 *Updated with iMotions API research findings — April 2026*
 *Resolved 6 of 11 questions and added workflow questions for PI — May 2026*
+*Phase 2 implementation: resolved Q12, Q14, Q15, Q16, Q18 with PI choices baked into code — May 2026*
