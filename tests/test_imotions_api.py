@@ -19,9 +19,13 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from imotions_api import (  # noqa: E402
     EventReceivingAPI,
+    RemoteControlAPI,
+    format_cancel_study,
     format_discrete,
+    format_run_study,
     format_scene_end,
     format_scene_start,
+    format_status_query,
 )
 
 
@@ -283,3 +287,106 @@ def test_async_queue_overflow_disables_client():
         finally:
             sendall_event.set()
             client.close()
+
+
+# ── Remote Control API: wire format ────────────────────────────────────────
+
+
+def test_run_study_format():
+    assert (
+        format_run_study("Vigilance", "P001", "", "")
+        == b"R;1;;RUN;Vigilance;P001;;;\r\n"
+    )
+
+
+def test_run_study_format_with_age_and_gender():
+    assert (
+        format_run_study("Vigilance", "P001", "27", "F")
+        == b"R;1;;RUN;Vigilance;P001;27;F;\r\n"
+    )
+
+
+def test_cancel_study_format():
+    assert format_cancel_study() == b"R;1;;CANCEL;;;;;\r\n"
+
+
+def test_status_query_format():
+    assert format_status_query() == b"R;1;;STATUS;;;;;\r\n"
+
+
+def test_run_study_sanitizes_semicolons_in_fields():
+    msg = format_run_study("Study;1", "P;01", "", "")
+    assert b"Study;1" not in msg
+    assert b"Study_1" in msg
+    assert b"P_01" in msg
+
+
+# ── Remote Control API: lifecycle (mocked socket) ──────────────────────────
+
+
+def test_remote_enabled_false_creates_no_socket():
+    with patch("imotions_api.socket.socket") as mock_sock:
+        client = RemoteControlAPI(enabled=False)
+        client.connect()
+        client.start_study("Study", "P01")
+        client.stop_study()
+        client.close()
+        mock_sock.assert_not_called()
+
+
+def test_remote_connect_failure_disables_client():
+    with patch("imotions_api.socket.socket") as mock_sock:
+        sock_instance = MagicMock()
+        mock_sock.return_value = sock_instance
+        sock_instance.connect.side_effect = ConnectionRefusedError
+        client = RemoteControlAPI()
+        assert client.connect() is False
+        assert client.enabled is False
+        # subsequent commands no-op and return False
+        assert client.start_study("Study", "P01") is False
+        assert client.stop_study() is False
+
+
+def test_remote_start_study_writes_expected_bytes():
+    with patch("imotions_api.socket.socket") as mock_sock:
+        sock_instance = MagicMock()
+        mock_sock.return_value = sock_instance
+        client = RemoteControlAPI()
+        assert client.connect() is True
+        assert client.start_study("Vigilance_CVT_PVT", "P017") is True
+        sock_instance.sendall.assert_called_once_with(
+            b"R;1;;RUN;Vigilance_CVT_PVT;P017;;;\r\n"
+        )
+
+
+def test_remote_stop_study_writes_expected_bytes():
+    with patch("imotions_api.socket.socket") as mock_sock:
+        sock_instance = MagicMock()
+        mock_sock.return_value = sock_instance
+        client = RemoteControlAPI()
+        assert client.connect() is True
+        assert client.stop_study() is True
+        sock_instance.sendall.assert_called_once_with(b"R;1;;CANCEL;;;;;\r\n")
+
+
+def test_remote_send_failure_disables_client():
+    with patch("imotions_api.socket.socket") as mock_sock:
+        sock_instance = MagicMock()
+        mock_sock.return_value = sock_instance
+        client = RemoteControlAPI()
+        assert client.connect() is True
+        sock_instance.sendall.side_effect = BrokenPipeError
+        assert client.start_study("S", "P") is False
+        assert client.enabled is False
+        # subsequent calls are no-ops
+        assert client.stop_study() is False
+
+
+def test_remote_close_is_idempotent():
+    with patch("imotions_api.socket.socket") as mock_sock:
+        sock_instance = MagicMock()
+        mock_sock.return_value = sock_instance
+        client = RemoteControlAPI()
+        client.connect()
+        client.close()
+        client.close()  # must not raise

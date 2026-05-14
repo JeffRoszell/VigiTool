@@ -256,11 +256,57 @@ class EventReceivingAPI:
 # ── Remote Control API client (Phase 7) ────────────────────────────────────
 
 
+# ── Remote Control API wire format ─────────────────────────────────────────
+#
+# Reference: iMotions Programmer's Guide. Commands follow the same
+# semicolon-delimited / CRLF-terminated pattern as the Event Receiving API,
+# but the leading message type is 'R' (remote control) rather than 'M'.
+#
+# Common commands seen in iMotions reference code and third-party wrappers:
+#   R;1;;RUN;<StudyName>;<RespondentName>;<Age>;<Gender>;\r\n
+#   R;1;;CANCEL;;;;;\r\n
+#   R;1;;STATUS;;;;;\r\n
+#
+# TODO(lab E2E): Verify these bytes against the official Feb 2026
+# control_imotions.py reference on the lab machine. If the field count or
+# command keywords differ, update only the format_* helpers below — the
+# RemoteControlAPI class itself is protocol-agnostic.
+
+
+def format_run_study(
+    study_name: str,
+    respondent_name: str,
+    age: str = "",
+    gender: str = "",
+) -> bytes:
+    line = (
+        "R;1;;RUN;"
+        f"{_sanitize(study_name)};"
+        f"{_sanitize(respondent_name)};"
+        f"{_sanitize(age)};"
+        f"{_sanitize(gender)};\r\n"
+    )
+    return line.encode("utf-8")
+
+
+def format_cancel_study() -> bytes:
+    return b"R;1;;CANCEL;;;;;\r\n"
+
+
+def format_status_query() -> bytes:
+    return b"R;1;;STATUS;;;;;\r\n"
+
+
 class RemoteControlAPI:
     """Client for the iMotions Remote Control API (default 127.0.0.1:8087).
 
-    Wired into run_session behind a config flag (default off). Same fail-soft
-    semantics as EventReceivingAPI.
+    Synchronous; commands are infrequent (one start at session begin, one
+    stop at session end) and the calling code reasonably waits for them.
+    Same fail-soft semantics as EventReceivingAPI — any socket error sets
+    enabled=False and silently no-ops subsequent calls.
+
+    Wired into run_session behind a feature flag that defaults to off until
+    the wire format is verified against the lab's installed iMotions version.
     """
 
     def __init__(
@@ -272,19 +318,79 @@ class RemoteControlAPI:
         send_timeout: float = 0.5,
         enabled: bool = True,
     ) -> None:
-        raise NotImplementedError
+        self.host = host
+        self.port = port
+        self.connect_timeout = connect_timeout
+        self.send_timeout = send_timeout
+        self.enabled = enabled
+        self._sock: socket.socket | None = None
+        self._connected = False
+        self._closed = False
 
     def connect(self) -> bool:
-        raise NotImplementedError
+        if not self.enabled:
+            return False
+        if self._connected:
+            return True
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(self.connect_timeout)
+            sock.connect((self.host, self.port))
+            sock.settimeout(self.send_timeout)
+            self._sock = sock
+            self._connected = True
+            logger.info(
+                "iMotions Remote Control API connected to %s:%d", self.host, self.port
+            )
+            return True
+        except OSError as exc:
+            logger.warning(
+                "iMotions Remote Control API connect failed (%s:%d): %s",
+                self.host, self.port, exc,
+            )
+            self.enabled = False
+            self._sock = None
+            return False
 
-    def start_study(self, study_name: str, respondent: str) -> bool:
-        raise NotImplementedError
+    def _send(self, payload: bytes) -> bool:
+        if not self.enabled or self._sock is None:
+            return False
+        try:
+            self._sock.sendall(payload)
+            return True
+        except OSError as exc:
+            logger.warning("iMotions Remote Control API send failed: %s", exc)
+            self.enabled = False
+            try:
+                self._sock.close()
+            except OSError:
+                pass
+            self._sock = None
+            return False
+
+    def start_study(
+        self,
+        study_name: str,
+        respondent_name: str,
+        age: str = "",
+        gender: str = "",
+    ) -> bool:
+        return self._send(format_run_study(study_name, respondent_name, age, gender))
 
     def stop_study(self) -> bool:
-        raise NotImplementedError
+        return self._send(format_cancel_study())
 
-    def status(self) -> str | None:
-        raise NotImplementedError
+    def status(self) -> bool:
+        return self._send(format_status_query())
 
     def close(self) -> None:
-        raise NotImplementedError
+        if self._closed:
+            return
+        self._closed = True
+        if self._sock is not None:
+            try:
+                self._sock.close()
+            except OSError:
+                pass
+            self._sock = None
+        self._connected = False
