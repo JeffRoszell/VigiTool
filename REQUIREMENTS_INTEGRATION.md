@@ -177,7 +177,12 @@ The April 2026 marker-format table in this section was wrong. It listed discrete
 | Remote Control (Q12) | Built but feature-flagged off (default); RA starts iMotions manually until verified |
 | Marker granularity per trial (Q14) | Most granular: `scene_start` (onset) + `scene_end` (offset) + discrete `response` |
 | Signal vs non-signal labels (Q15) | Distinguish (`cvt_signal_stim`, `cvt_nonsignal_stim`) |
-| Failure tolerance (Q16) | Continue with warning logged locally; behavioral JSON is the primary record |
+| Failure tolerance (Q16) | Continue with warning logged locally; behavioral JSON is the primary record — reconfirmed by PI June 2026 (acceptable while disconnects stay rare) |
+| Error labeling (Q6, June 2026) | Per-trial outcome markers; misses = `*_error_omission`, false alarms / anticipatory = `*_error_commission` |
+| Recalibration (Q19, June 2026) | RA hold screen + `recalibration_start/end` markers after every 5-min break |
+| Eye tracking (Q3, June 2026) | Smarteye via iMotions only — no Tobii integration |
+| Timing precision (Q17, June 2026) | Sub-millisecond sufficient; localhost TCP, no hardware trigger |
+| Recording start (Q12, June 2026) | Confirmed option (a): RA starts iMotions; Remote Control flag stays off |
 
 ### 6.3 Async, fail-soft sender
 
@@ -194,17 +199,29 @@ CVT:
 - `cvt_period_<n>` — discrete, on first trial of each new period
 - `cvt_signal_stim` / `cvt_nonsignal_stim` — scene pair (per trial)
 - `cvt_response` — discrete with `rt=<ms>,trial=<n>,kind=signal|nonsignal`
+- `cvt_hit` / `cvt_correct_rejection` / `cvt_error_omission` (miss) /
+  `cvt_error_commission` (false alarm) — discrete outcome marker per scored
+  trial, description `outcome=...,trial=<n>,period=<p>,rt=<ms|none>`
+  (PI decision June 2026)
 
 PVT:
 - `pvt_<difficulty>_block` — scene pair (per block)
 - `pvt_period_<n>` — discrete, on first trial of each new period
 - `pvt_stim` — scene pair (per trial; description `trial=<n>,period=<p>`)
 - `pvt_response` — discrete with `rt=<ms|none>,type=valid|lapse|anticipatory|timeout,trial=<n>`
-- `pvt_anticipatory` — discrete on pre-stim press, `phase=isi|foreperiod`
+- `pvt_anticipatory` — discrete on pre-stim press, `phase=isi|foreperiod`,
+  accompanied by `pvt_error_commission` (`type=anticipatory,phase=...`)
+- `pvt_error_omission` — discrete after lapse/timeout responses,
+  `type=lapse|timeout,rt=<ms|none>,trial=<n>` (PI decision June 2026)
+- `pvt_error_commission` — discrete after anticipatory responses,
+  `type=anticipatory,rt=<ms>,trial=<n>`
 
 Session-level:
 - `session_<pid>_<ts>` — scene pair wrapping the whole run
 - `session_break_start` / `session_break_end` — discrete around the 5-min inter-task break
+- `recalibration_start` / `recalibration_end` — discrete pair around the RA
+  eye-tracking recalibration hold that follows **every** 5-min break
+  (between blocks within a task and between tasks; PI decision June 2026)
 
 ### 6.5 Configuration
 

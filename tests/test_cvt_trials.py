@@ -263,6 +263,43 @@ def test_emitter_period_marker():
     assert fake.calls == [("discrete", "cvt_period_3", "")]
 
 
+def _scored_trial(outcome, trial_number=1, period=1, rt_ms=None):
+    return {
+        "trial_number": trial_number,
+        "period": period,
+        "outcome": outcome,
+        "reaction_time_ms": rt_ms,
+        "is_signal": outcome in ("hit", "miss"),
+    }
+
+
+def test_emitter_outcome_labels_all_four():
+    """PI decision (Jeff_questions_U2): every scored trial gets an outcome
+    marker; errors are labeled omission/commission."""
+    fake = _FakeMarkerClient()
+    em = CvtMarkerEmitter(fake)
+    em.outcome(_scored_trial("hit", 1, 1, 312.5))
+    em.outcome(_scored_trial("miss", 2, 1))
+    em.outcome(_scored_trial("false_alarm", 3, 2, 488.0))
+    em.outcome(_scored_trial("correct_rejection", 4, 2))
+    assert fake.calls == [
+        ("discrete", "cvt_hit", "outcome=hit,trial=1,period=1,rt=312.5"),
+        ("discrete", "cvt_error_omission", "outcome=miss,trial=2,period=1,rt=none"),
+        ("discrete", "cvt_error_commission",
+         "outcome=false_alarm,trial=3,period=2,rt=488.0"),
+        ("discrete", "cvt_correct_rejection",
+         "outcome=correct_rejection,trial=4,period=2,rt=none"),
+    ]
+
+
+def test_emitter_outcome_unscored_trial_is_silent():
+    fake = _FakeMarkerClient()
+    em = CvtMarkerEmitter(fake)
+    em.outcome({"trial_number": 1, "period": 1, "outcome": None,
+                "reaction_time_ms": None, "is_signal": True})
+    assert fake.calls == []
+
+
 # ── Schema regression ─────────────────────────────────────────────────────
 
 

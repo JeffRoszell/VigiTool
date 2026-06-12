@@ -8,6 +8,29 @@ and this project adheres to the versioning scheme described in
 
 Each release entry records the **PI protocol revision** the code targets.
 
+## [Unreleased]
+
+Incorporates PI answers to the workflow & study-design questions
+(`Jeff_questions_U2`, June 2026).
+
+### Added
+- **Per-trial outcome markers (CVT).** Every scored trial emits a discrete
+  iMotions marker: `cvt_hit`, `cvt_correct_rejection`, `cvt_error_omission`
+  (miss), or `cvt_error_commission` (false alarm).
+- **Error markers (PVT).** Lapses and timeouts emit `pvt_error_omission`;
+  anticipatory presses (pre- and post-stimulus) emit `pvt_error_commission`.
+- **Recalibration holds.** After every 5-minute break (between blocks within
+  a task and between CVT and PVT), the app holds on an RA screen until
+  eye-tracking recalibration is confirmed, bracketed by
+  `recalibration_start`/`recalibration_end` markers
+  (`session_utils.recalibration_hold`).
+
+### Changed
+- Docs updated with PI decisions: Smarteye-only eye tracking (no Tobii
+  integration), sub-millisecond sync target met by localhost TCP (no hardware
+  trigger), RA starts the iMotions recording (Remote Control flag stays off),
+  one shared iMotions study with a respondent per participant.
+
 ## [0.2.0] – 2026-05-06 — Protocol: U3
 
 Aligns the CVT and PVT implementations with the *Cognitive Vigilance Task

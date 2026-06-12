@@ -18,7 +18,7 @@ These questions relate to the planned integration of the vigilance task software
    > **Resolved**: Tobii is integrated by iMotions; no direct Tobii SDK integration required.
 
 3. **Smarteye**: What is Smarteye's role in the study alongside the Tobii? Is it a redundant/complementary eye-tracking system, or does it serve a different purpose (e.g., head tracking)? Does it also need event markers from the task software?
-   > *Still open*: Confirm with PI whether Smarteye routes through iMotions or needs separate handling.
+   > **Resolved (June 2026, PI)**: Smarteye devices + iMotions only — **no Tobii integration required**. Smarteye routes through iMotions; no separate handling by the task software.
 
 4. **Single computer or multiple?** Will the task software, B-Alert, Tobii, and Smarteye all run on the same machine, or across separate machines on a local network?
    > **Resolved (for the marker path)**: The task software and iMotions must run on the same machine — markers go to `localhost:8089`. Where the biosensor acquisition units physically connect (USB to the iMotions machine vs. separate acquisition PCs) does not affect our software.
@@ -37,12 +37,13 @@ These questions relate to the planned integration of the vigilance task software
    - Signal vs. non-signal trial type (CVT)
    - Practice start / practice end
    - Difficulty condition identifier
+   > **Resolved (June 2026, PI)**: List confirmed, **including stimulus offset**, plus explicit error labeling: misses are marked `*_error_omission` and false alarms / anticipatory presses `*_error_commission`. Implemented as per-trial outcome markers in `CvtMarkerEmitter.outcome` and `PvtMarkerEmitter.error_outcome`.
 
 7. **Marker format**: Do the systems expect numeric codes (e.g., marker 1 = stimulus onset, marker 2 = response), string labels, or both?
    > **Resolved**: iMotions accepts string labels in semicolon-delimited messages — see `REQUIREMENTS_INTEGRATION.md §5.2` for the full format. Confirmed from official Feb 2026 reference code.
 
 8. **Timing precision requirements**: What temporal precision is needed for markers? (e.g., <1 ms, <5 ms, <10 ms)
-   > *Still open*: Confirm with PI. TCP marker delivery over localhost is typically <1 ms; iMotions timestamps markers on receipt at the application layer.
+   > **Resolved (June 2026, PI)**: Sub-millisecond synchronization is sufficient. Localhost TCP meets this; **no hardware trigger needed**.
 
 ### Hardware & Software Environment
 
@@ -50,7 +51,7 @@ These questions relate to the planned integration of the vigilance task software
    > *Low priority*: TCP over localhost has no special hardware requirements. Still worth confirming the OS (PsychoPy and iMotions both run on Windows, which is assumed).
 
 10. **Software versions**: What versions of B-Alert Live, Tobii Pro Lab, and Smarteye software are installed?
-    > *Still open* — and: **What version of iMotions is installed?** The reference code is from the current iMotions repo (Feb 2026); the marker format has been stable across recent versions but worth confirming.
+    > *Still open (June 2026)*: PI will reconnect with James in person and confirm versions. Tobii Pro Lab no longer applies (Smarteye only).
 
 11. **Existing Python packages**: Are there any Python packages already installed on the lab machine for interfacing with these systems (e.g., `pylsl`, `tobii_research`)?
     > **Resolved**: Not needed. Only Python's built-in `socket` module is required for the marker path.
@@ -65,8 +66,10 @@ These questions arose after confirming the live API is viable. They affect study
     - (a) RA clicks "Start" in iMotions, then launches `run_session.py`. Task software only sends markers into an already-running recording.
     - (b) `run_session.py` uses the Remote Control API (port 8087) to start the iMotions study automatically when the participant clicks Continue.
     > **Resolved (May 2026)**: Both paths are built. The Remote Control client is implemented but feature-flagged **off** by default (`IMOTIONS_REMOTE_ENABLED=0`). Production runs use option (a) until the Remote Control wire format is verified on the lab machine — then the flag can be flipped without code changes.
+    > **Confirmed by PI (June 2026)**: Option (a) — the RA starts the iMotions recording. Flag stays off.
 
 13. **Per-participant iMotions setup**: Will each participant be a new "respondent" inside one shared iMotions study, or will a new iMotions study be created per session? This determines whether the task script needs to pass a respondent name through the Remote Control API or whether the RA enters it in iMotions before launching the task.
+    > **Resolved (June 2026, PI)**: One shared study with a new respondent per participant (recommended model accepted). PI will help set up the study after a handover from James; a joint working call (PI + Jeff, possibly Lina) is being scheduled.
 
 14. **Stimulus event granularity for markers**: For each CVT trial, should the marker stream include:
     - (a) only stimulus onset (and the local JSON has the rest)
@@ -83,6 +86,7 @@ These questions arose after confirming the live API is viable. They affect study
     > **Resolved (May 2026)**: Option (b) — implemented as the fail-soft pattern in `EventReceivingAPI` and `RemoteControlAPI`. Any socket error flips `enabled=False`, logs a warning, and the trial loop continues. The behavioral JSON is the primary record.
 
 17. **Timing-precision target**: What alignment precision is required between the task markers and the EEG/eye-tracking streams for the analyses planned (Engagement Index, Frontal Theta, fixation/saccade events)? This sets the threshold for whether the localhost-TCP path (typically sub-ms) is sufficient or whether we should add a redundant hardware trigger.
+    > **Resolved (June 2026, PI)**: Sub-millisecond is sufficient — localhost TCP path stands, no hardware trigger.
 
 18. **Recording continuity**: The Remote Control API starts/stops *all sensors at once* — there is no public way to toggle EEG vs. eye-tracking independently. Should the iMotions recording be:
     - (a) one continuous recording for the whole session (EEG + eye-tracking active during practice, breaks, and both tasks), or
@@ -92,8 +96,10 @@ These questions arose after confirming the live API is viable. They affect study
 19. **Calibration timing in the session**: Eye-tracker calibration (Tobii 9-point) and B-Alert impedance checks happen through iMotions' own UI before recording starts — PsychoPy can't trigger them mid-session. Confirm the intended session order:
     - RA seats participant → RA runs Tobii calibration + B-Alert impedance in iMotions → RA launches `run_session.py` → app sends EEG-baseline hold screen → recording proceeds.
     > Is re-calibration ever needed between blocks (e.g., if the participant shifts position)? If so, the app needs an explicit pause point where the RA can re-enter iMotions.
+    > **Resolved (June 2026, PI)**: Session order confirmed (Smarteye calibration, not Tobii). **Yes — every 5-minute break (between the two 24-minute blocks of each task, and between CVT and PVT) requires eye-tracking recalibration.** Implemented as `session_utils.recalibration_hold`: after each timed break the app holds on an RA screen until recalibration is confirmed, bracketed by `recalibration_start`/`recalibration_end` markers.
 
 20. **iMotions study definition ownership**: Using the Remote Control API requires an iMotions study definition (sensor list, recording settings) to already exist by name. Who builds and maintains it? Suggested model: one canonical "Vigilance_CVT_PVT" study, defined once, with a new respondent added per participant. Confirm — and confirm who has admin rights in iMotions to create/edit the study.
+    > **Resolved (June 2026, PI)**: PI will help with study setup after getting the handover from James; shared-study/respondent-per-participant model accepted. Joint setup call to be scheduled (Thursday/Friday evening), possibly with Lina.
 
 ---
 
@@ -101,3 +107,4 @@ These questions arose after confirming the live API is viable. They affect study
 *Updated with iMotions API research findings — April 2026*
 *Resolved 6 of 11 questions and added workflow questions for PI — May 2026*
 *Phase 2 implementation: resolved Q12, Q14, Q15, Q16, Q18 with PI choices baked into code — May 2026*
+*PI answers received (Jeff_questions_U2): resolved Q3, Q6, Q8, Q13, Q17, Q19, Q20; confirmed Q12 option (a); added error-of-omission/commission markers and recalibration holds — June 2026*

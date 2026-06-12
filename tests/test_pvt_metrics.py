@@ -227,11 +227,42 @@ def test_pvt_emitter_response_timeout_has_no_rt():
 
 
 def test_pvt_emitter_anticipatory_phase():
+    """Pre-stimulus presses carry a commission-error marker alongside the
+    anticipatory marker (PI decision, Jeff_questions_U2)."""
     fake = _FakeMarkerClient()
     em = PvtMarkerEmitter(fake)
     em.anticipatory("isi")
     em.anticipatory("foreperiod")
     assert fake.calls == [
         ("discrete", "pvt_anticipatory", "phase=isi"),
+        ("discrete", "pvt_error_commission", "type=anticipatory,phase=isi"),
         ("discrete", "pvt_anticipatory", "phase=foreperiod"),
+        ("discrete", "pvt_error_commission", "type=anticipatory,phase=foreperiod"),
     ]
+
+
+def test_pvt_emitter_error_outcome_omission():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.error_outcome(3, "lapse", 612.0)
+    em.error_outcome(4, "timeout", None)
+    assert fake.calls == [
+        ("discrete", "pvt_error_omission", "type=lapse,rt=612.0,trial=3"),
+        ("discrete", "pvt_error_omission", "type=timeout,rt=none,trial=4"),
+    ]
+
+
+def test_pvt_emitter_error_outcome_commission():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.error_outcome(5, "anticipatory", 80.0)
+    assert fake.calls == [
+        ("discrete", "pvt_error_commission", "type=anticipatory,rt=80.0,trial=5"),
+    ]
+
+
+def test_pvt_emitter_error_outcome_valid_is_silent():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.error_outcome(6, "valid", 250.0)
+    assert fake.calls == []

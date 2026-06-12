@@ -86,6 +86,28 @@ class CvtMarkerEmitter:
             f"rt={rt_ms:.1f},trial={trial['trial_number']},kind={kind}",
         )
 
+    # Per PI decision (June 2026, Jeff_questions_U2): every scored trial gets
+    # a discrete outcome marker; misses and false alarms are labeled errors of
+    # omission and commission so epochs can be selected directly in iMotions.
+    _OUTCOME_MARKERS = {
+        "hit": "cvt_hit",
+        "miss": "cvt_error_omission",
+        "false_alarm": "cvt_error_commission",
+        "correct_rejection": "cvt_correct_rejection",
+    }
+
+    def outcome(self, trial: dict) -> None:
+        name = self._OUTCOME_MARKERS.get(trial.get("outcome"))
+        if name is None:
+            return
+        rt = trial.get("reaction_time_ms")
+        rt_str = f"{rt:.1f}" if rt is not None else "none"
+        self.client.discrete(
+            name,
+            f"outcome={trial['outcome']},trial={trial['trial_number']},"
+            f"period={trial['period']},rt={rt_str}",
+        )
+
 
 # ── Trial generation ───────────────────────────────────────────────────────
 
@@ -525,6 +547,7 @@ def run_task(
             trial["outcome"] = "hit" if responded else "miss"
         else:
             trial["outcome"] = "false_alarm" if responded else "correct_rejection"
+        emitter.outcome(trial)
 
         # ── Practice-only: feedback for misses & correct rejections ──
         if show_all_feedback and not responded:
@@ -600,7 +623,11 @@ def run_full_session(
     """
     from psychopy import core  # noqa: PLC0415
 
-    from session_utils import BREAK_MINUTES, timed_break  # noqa: PLC0415
+    from session_utils import (  # noqa: PLC0415
+        BREAK_MINUTES,
+        recalibration_hold,
+        timed_break,
+    )
 
     emitter = CvtMarkerEmitter(marker_client)
 
@@ -633,6 +660,8 @@ def run_full_session(
         if block_num < len(difficulty_order):
             mins = break_minutes if break_minutes is not None else BREAK_MINUTES
             if not timed_break(win, minutes=mins, label="BREAK BETWEEN BLOCKS"):
+                return True
+            if not recalibration_hold(win, marker_client):
                 return True
 
     return False

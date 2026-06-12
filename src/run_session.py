@@ -25,7 +25,12 @@ import cvt_task
 import imotions_config
 import pvt_task
 from imotions_api import EventReceivingAPI, LoggingMarkerClient, RemoteControlAPI
-from session_utils import BREAK_MINUTES, message_screen, timed_break
+from session_utils import (
+    BREAK_MINUTES,
+    message_screen,
+    recalibration_hold,
+    timed_break,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +124,10 @@ def run(
                 ok = timed_break(win, minutes=break_minutes, label="BREAK BETWEEN TASKS")
                 event_client.discrete("session_break_end")
                 if not ok:
+                    return True
+                # Per PI decision (June 2026): breaks require eye-tracking
+                # recalibration before the next task begins.
+                if not recalibration_hold(win, event_client):
                     return True
     finally:
         try:

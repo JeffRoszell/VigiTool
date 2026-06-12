@@ -91,54 +91,70 @@ def test_cvt_block_full_marker_stream():
         em.period(1)
 
         # trial 1 — signal, hit at 250ms
-        t1 = {"is_signal": True, "trial_number": 1, "period": 1}
+        t1 = {"is_signal": True, "trial_number": 1, "period": 1,
+              "outcome": "hit", "reaction_time_ms": 250.0}
         em.stim_onset(t1)
         em.response(t1, 250.0)
         em.stim_offset(t1)
+        em.outcome(t1)
 
         # trial 2 — nonsignal, correct rejection (no response)
-        t2 = {"is_signal": False, "trial_number": 2, "period": 1}
+        t2 = {"is_signal": False, "trial_number": 2, "period": 1,
+              "outcome": "correct_rejection", "reaction_time_ms": None}
         em.stim_onset(t2)
         em.stim_offset(t2)
+        em.outcome(t2)
 
-        # trial 3 — signal, miss
-        t3 = {"is_signal": True, "trial_number": 3, "period": 1}
+        # trial 3 — signal, miss (error of omission)
+        t3 = {"is_signal": True, "trial_number": 3, "period": 1,
+              "outcome": "miss", "reaction_time_ms": None}
         em.stim_onset(t3)
         em.stim_offset(t3)
+        em.outcome(t3)
 
-        # trial 4 — nonsignal, false alarm at 350ms
-        t4 = {"is_signal": False, "trial_number": 4, "period": 1}
+        # trial 4 — nonsignal, false alarm at 350ms (error of commission)
+        t4 = {"is_signal": False, "trial_number": 4, "period": 1,
+              "outcome": "false_alarm", "reaction_time_ms": 350.0}
         em.stim_onset(t4)
         em.response(t4, 350.0)
         em.stim_offset(t4)
+        em.outcome(t4)
 
         # trial 5 — signal, hit at 280ms (period transition before this trial)
         em.period(2)
-        t5 = {"is_signal": True, "trial_number": 5, "period": 2}
+        t5 = {"is_signal": True, "trial_number": 5, "period": 2,
+              "outcome": "hit", "reaction_time_ms": 280.0}
         em.stim_onset(t5)
         em.response(t5, 280.0)
         em.stim_offset(t5)
+        em.outcome(t5)
 
         em.block_end("high")
 
-        # Expected sequence (15 markers total)
+        # Expected sequence — every trial now ends with an outcome marker
+        # (PI decision June 2026: errors labeled omission/commission).
         expected = [
             b"M;2;;;cvt_high_block;;N;I\r\n",
             b"M;2;;;cvt_period_1;;D;\r\n",
             b"M;2;;;cvt_signal_stim;trial=1,period=1;N;I\r\n",
             b"M;2;;;cvt_response;rt=250.0,trial=1,kind=signal;D;\r\n",
             b"M;2;;;cvt_signal_stim;;E;\r\n",
+            b"M;2;;;cvt_hit;outcome=hit,trial=1,period=1,rt=250.0;D;\r\n",
             b"M;2;;;cvt_nonsignal_stim;trial=2,period=1;N;I\r\n",
             b"M;2;;;cvt_nonsignal_stim;;E;\r\n",
+            b"M;2;;;cvt_correct_rejection;outcome=correct_rejection,trial=2,period=1,rt=none;D;\r\n",
             b"M;2;;;cvt_signal_stim;trial=3,period=1;N;I\r\n",
             b"M;2;;;cvt_signal_stim;;E;\r\n",
+            b"M;2;;;cvt_error_omission;outcome=miss,trial=3,period=1,rt=none;D;\r\n",
             b"M;2;;;cvt_nonsignal_stim;trial=4,period=1;N;I\r\n",
             b"M;2;;;cvt_response;rt=350.0,trial=4,kind=nonsignal;D;\r\n",
             b"M;2;;;cvt_nonsignal_stim;;E;\r\n",
+            b"M;2;;;cvt_error_commission;outcome=false_alarm,trial=4,period=1,rt=350.0;D;\r\n",
             b"M;2;;;cvt_period_2;;D;\r\n",
             b"M;2;;;cvt_signal_stim;trial=5,period=2;N;I\r\n",
             b"M;2;;;cvt_response;rt=280.0,trial=5,kind=signal;D;\r\n",
             b"M;2;;;cvt_signal_stim;;E;\r\n",
+            b"M;2;;;cvt_hit;outcome=hit,trial=5,period=2,rt=280.0;D;\r\n",
             b"M;2;;;cvt_high_block;;E;\r\n",
         ]
         _wait_for_markers(received, len(expected))
@@ -230,23 +246,26 @@ def test_pvt_block_full_marker_stream():
         # ISI early press
         em.anticipatory("isi")
 
-        # trial 1 — valid response
+        # trial 1 — valid response (no error marker)
         em.stim_onset(1, 1)
         em.stim_offset()
         em.response(1, 287.0, "valid")
+        em.error_outcome(1, "valid", 287.0)
 
         # foreperiod early press before trial 2
         em.anticipatory("foreperiod")
 
-        # trial 2 — lapse
+        # trial 2 — lapse (error of omission)
         em.stim_onset(2, 1)
         em.stim_offset()
         em.response(2, 612.0, "lapse")
+        em.error_outcome(2, "lapse", 612.0)
 
-        # trial 3 — timeout (no response)
+        # trial 3 — timeout / no response (error of omission)
         em.stim_onset(3, 1)
         em.stim_offset()
         em.response(3, None, "timeout")
+        em.error_outcome(3, "timeout", None)
 
         em.block_end("low")
 
@@ -254,16 +273,20 @@ def test_pvt_block_full_marker_stream():
             b"M;2;;;pvt_low_block;;N;I\r\n",
             b"M;2;;;pvt_period_1;;D;\r\n",
             b"M;2;;;pvt_anticipatory;phase=isi;D;\r\n",
+            b"M;2;;;pvt_error_commission;type=anticipatory,phase=isi;D;\r\n",
             b"M;2;;;pvt_stim;trial=1,period=1;N;I\r\n",
             b"M;2;;;pvt_stim;;E;\r\n",
             b"M;2;;;pvt_response;rt=287.0,type=valid,trial=1;D;\r\n",
             b"M;2;;;pvt_anticipatory;phase=foreperiod;D;\r\n",
+            b"M;2;;;pvt_error_commission;type=anticipatory,phase=foreperiod;D;\r\n",
             b"M;2;;;pvt_stim;trial=2,period=1;N;I\r\n",
             b"M;2;;;pvt_stim;;E;\r\n",
             b"M;2;;;pvt_response;rt=612.0,type=lapse,trial=2;D;\r\n",
+            b"M;2;;;pvt_error_omission;type=lapse,rt=612.0,trial=2;D;\r\n",
             b"M;2;;;pvt_stim;trial=3,period=1;N;I\r\n",
             b"M;2;;;pvt_stim;;E;\r\n",
             b"M;2;;;pvt_response;rt=none,type=timeout,trial=3;D;\r\n",
+            b"M;2;;;pvt_error_omission;type=timeout,rt=none,trial=3;D;\r\n",
             b"M;2;;;pvt_low_block;;E;\r\n",
         ]
         _wait_for_markers(received, len(expected))

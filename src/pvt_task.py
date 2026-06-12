@@ -64,8 +64,30 @@ class PvtMarkerEmitter:
         )
 
     def anticipatory(self, phase: str) -> None:
-        """Press during ISI or foreperiod (no stimulus on screen yet)."""
+        """Press during ISI or foreperiod (no stimulus on screen yet).
+
+        Pre-stimulus presses are errors of commission (PI decision June 2026),
+        so an error marker accompanies the existing anticipatory marker.
+        """
         self.client.discrete("pvt_anticipatory", f"phase={phase}")
+        self.client.discrete("pvt_error_commission", f"type=anticipatory,phase={phase}")
+
+    # Per PI decision (June 2026, Jeff_questions_U2): label errors of omission
+    # (lapses / timeouts) and commission (anticipatory presses) explicitly so
+    # epochs can be selected directly in iMotions.
+    def error_outcome(
+        self, trial_num: int, response_type: str, rt_ms: Optional[float]
+    ) -> None:
+        if response_type in ("lapse", "timeout"):
+            name = "pvt_error_omission"
+        elif response_type == "anticipatory":
+            name = "pvt_error_commission"
+        else:
+            return
+        rt_str = f"{rt_ms:.1f}" if rt_ms is not None else "none"
+        self.client.discrete(
+            name, f"type={response_type},rt={rt_str},trial={trial_num}"
+        )
 
 
 # ── Metrics ────────────────────────────────────────────────────────────────
@@ -390,6 +412,7 @@ def run_task(
             fb_text = f"{int(rt_ms)} ms"
 
         emitter.response(trial_num, rt_ms, response_type)
+        emitter.error_outcome(trial_num, response_type, rt_ms)
 
         # ── Feedback ───────────────────────────────────────
         feedback_obj.setColor(fb_color)
@@ -438,7 +461,11 @@ def run_full_session(
     """
     from psychopy import core  # noqa: PLC0415
 
-    from session_utils import BREAK_MINUTES, timed_break  # noqa: PLC0415
+    from session_utils import (  # noqa: PLC0415
+        BREAK_MINUTES,
+        recalibration_hold,
+        timed_break,
+    )
 
     emitter = PvtMarkerEmitter(marker_client)
 
@@ -473,6 +500,8 @@ def run_full_session(
         if block_num < len(difficulty_order):
             mins = break_minutes if break_minutes is not None else BREAK_MINUTES
             if not timed_break(win, minutes=mins, label="BREAK BETWEEN BLOCKS"):
+                return True
+            if not recalibration_hold(win, marker_client):
                 return True
 
     return False
