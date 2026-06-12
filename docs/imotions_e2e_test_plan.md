@@ -17,7 +17,7 @@ X-24 and Smarteye paired through iMotions (PI June 2026: no Tobii).
 
 ## 0. Prerequisites
 
-- [ ] Repository on the lab machine, branch `feature/imotions-integration`
+- [ ] Repository on the lab machine, branch `main` (or current feature branch)
 - [ ] `pip install -e ".[dev]"` succeeds
 - [ ] `pytest tests/` runs green
 - [ ] iMotions Global Settings → API → Event Receiving API enabled, TCP, port 8089
