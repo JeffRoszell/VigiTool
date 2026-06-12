@@ -70,9 +70,10 @@ class CvtMarkerEmitter:
 
     def stim_onset(self, trial: dict) -> None:
         kind = "signal" if trial["is_signal"] else "nonsignal"
+        # Practice trials carry no "period" key — report period=0 for them.
         self.client.scene_start(
             f"cvt_{kind}_stim",
-            f"trial={trial['trial_number']},period={trial['period']}",
+            f"trial={trial['trial_number']},period={trial.get('period', 0)}",
         )
 
     def stim_offset(self, trial: dict) -> None:
@@ -105,7 +106,7 @@ class CvtMarkerEmitter:
         self.client.discrete(
             name,
             f"outcome={trial['outcome']},trial={trial['trial_number']},"
-            f"period={trial['period']},rt={rt_str}",
+            f"period={trial.get('period', 0)},rt={rt_str}",
         )
 
 

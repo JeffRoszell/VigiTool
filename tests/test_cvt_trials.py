@@ -292,6 +292,22 @@ def test_emitter_outcome_labels_all_four():
     ]
 
 
+def test_emitter_handles_practice_trials_without_period_key():
+    """Regression: build_practice_sequence omits 'period'; the emitter must
+    not KeyError (crashed in headless walkthrough, June 2026)."""
+    fake = _FakeMarkerClient()
+    em = CvtMarkerEmitter(fake)
+    practice_trial = {"trial_number": 1, "stimulus": "45", "is_signal": True,
+                      "location": "center"}
+    em.stim_onset(practice_trial)
+    practice_trial.update({"outcome": "hit", "reaction_time_ms": 300.0})
+    em.outcome(practice_trial)
+    assert fake.calls == [
+        ("scene_start", "cvt_signal_stim", "trial=1,period=0", "I"),
+        ("discrete", "cvt_hit", "outcome=hit,trial=1,period=0,rt=300.0"),
+    ]
+
+
 def test_emitter_outcome_unscored_trial_is_silent():
     fake = _FakeMarkerClient()
     em = CvtMarkerEmitter(fake)
