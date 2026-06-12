@@ -8,7 +8,7 @@ covers what cannot.
 
 **Required:** lab machine with iMotions installed, a defined iMotions study
 (name matching `IMOTIONS_STUDY_NAME`, default `Vigilance_CVT_PVT`), B-Alert
-X-24 and Tobii Pro Fusion paired through iMotions.
+X-24 and Smarteye paired through iMotions (PI June 2026: no Tobii).
 
 **Roles:** Tester (Jeff or RA). No participant data — use a pilot ID such as
 `PILOT01`.

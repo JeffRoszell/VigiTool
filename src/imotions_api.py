@@ -23,11 +23,6 @@ logger = logging.getLogger(__name__)
 _DEFAULT_QUEUE_MAXSIZE = 8192
 
 
-# Implementations land in Phases 2 (format), 3 (sync client), 4 (async sender),
-# and 7 (RemoteControlAPI). At Phase 1 these are stubs so the test file imports
-# cleanly and assertions fail with NotImplementedError.
-
-
 # ── Wire format ────────────────────────────────────────────────────────────
 #
 # Marker shapes (semicolon-delimited, CRLF-terminated, 8 fields each):
@@ -374,8 +369,12 @@ class RemoteControlAPI:
     Same fail-soft semantics as EventReceivingAPI — any socket error sets
     enabled=False and silently no-ops subsequent calls.
 
-    Wired into run_session behind a feature flag that defaults to off until
-    the wire format is verified against the lab's installed iMotions version.
+    Wired into run_session behind a feature flag that defaults to off.
+    Dormant by PI decision (June 2026): the RA starts the iMotions recording
+    manually, so production never enables this client. Kept because it is
+    tested, costs nothing at runtime, and lets the auto-start path be enabled
+    later via IMOTIONS_REMOTE_ENABLED=1 without code changes (wire format
+    would still need verification on the lab machine first).
     """
 
     def __init__(

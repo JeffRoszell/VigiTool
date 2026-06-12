@@ -2,7 +2,7 @@
 
 Vigilance task suite for IRB #0007078 — UND Psychology Department.
 
-Compares sustained attention in younger adults (18–35) and older adults (65+) using concurrent EEG and eye-tracking (future phase). Built with [PsychoPy](https://www.psychopy.org/) for millisecond-accurate stimulus timing.
+Compares sustained attention in younger adults (18–35) and older adults (65+) with concurrent EEG and eye-tracking synchronized through iMotions. Built with [PsychoPy](https://www.psychopy.org/) for millisecond-accurate stimulus timing.
 
 **PI:** Dr. Poltavski · **Co-PI:** Dr. Gupta · **Developer:** Jeff Roszell (BME)
 
@@ -84,7 +84,7 @@ VigiTool/
 ├── data/                   # Participant output (gitignored — IRB requirement)
 ├── Background/             # Reference papers and IRB documents
 ├── REQUIREMENTS.md         # Core task requirements
-├── REQUIREMENTS_INTEGRATION.md  # EEG/eye-tracking integration (future)
+├── REQUIREMENTS_INTEGRATION.md  # EEG/eye-tracking integration (implemented)
 ├── MIGRATION_PLAN.md       # tkinter → PsychoPy migration roadmap
 ├── KNOWN_ISSUES.md         # Documented bugs in legacy code
 └── QUESTIONS_FOR_PI.md     # Open protocol questions for Poltavski/Gupta
@@ -99,7 +99,7 @@ VigiTool/
 | CVT (PsychoPy) | Complete |
 | PVT (PsychoPy) | Complete |
 | Unified launcher | Planned |
-| iMotions integration | Planned (Phase 2) |
+| iMotions integration | Implemented (marker streaming; awaiting lab E2E) |
 | EEG / eye-tracking | Planned (Phase 3) |
 
 ---

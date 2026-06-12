@@ -23,15 +23,13 @@ is end-to-end validation on the lab machine — see `docs/imotions_e2e_test_plan
 - Software: B-Alert Live
 - Needs event markers synchronized to task events for ERP/spectral analysis
 
-### 1.2 Tobii Pro Fusion (Eye-Tracking)
-- 120 Hz sampling rate
-- Software: Tobii Pro Lab
-- 9-point calibration, participant seated 60 cm from tracker
-- Needs event markers for gaze analysis aligned to task events
-
-### 1.3 Smarteye
-- Role in study TBD (see questions doc)
-- May need event markers depending on role
+### 1.2 Smarteye (Eye-Tracking)
+- **PI decision (June 2026)**: Smarteye is the study's eye tracker, integrated
+  through iMotions — **no Tobii integration** (the Tobii Pro Fusion described
+  in earlier drafts is not used)
+- Calibration runs through iMotions' UI; recalibration required after every
+  5-minute break (see §6.4 session-level markers)
+- Receives task event markers via iMotions like all other sensors
 
 ---
 
@@ -79,7 +77,7 @@ These inform what events need precise marking:
 
 ## 5. iMotions API — Research Findings
 
-iMotions serves as the synchronization hub for all biosensors (B-Alert, Tobii, Smarteye). The task software communicates with iMotions via its external API rather than integrating with each sensor SDK directly.
+iMotions serves as the synchronization hub for all biosensors (B-Alert, Smarteye). The task software communicates with iMotions via its external API rather than integrating with each sensor SDK directly.
 
 ### 5.1 Connection
 
@@ -243,18 +241,18 @@ useful for post-hoc debugging of clock skew or dropped markers.
 ---
 
 ## 7. Open Items
-- **Remote Control wire format**: documented `R;1;;<CMD>;...;\r\n` shape needs
-  verification against the Feb 2026 `control_imotions.py` reference on the lab
-  machine. The class is protocol-agnostic — only the `format_*` helpers need
-  updating if the format differs.
-- **Smarteye role** (`QUESTIONS_INTEGRATION.md` Q3) still open.
-- **Timing-precision target** (Q8/Q17) still open; current path is sub-ms
-  on localhost TCP and is unlikely to be the bottleneck.
-- **iMotions software version on lab machine** (Q10) needs confirmation.
+- **iMotions / B-Alert Live / Smarteye software versions on lab machine**
+  (Q10): PI to confirm after reconnecting with James.
+- **iMotions study setup**: shared `Vigilance_CVT_PVT` study to be built with
+  the PI after James's handover (joint call being scheduled).
 - Hardware access on the lab machine needed for end-to-end testing — see
   `docs/imotions_e2e_test_plan.md`.
+- **Remote Control wire format** (low priority — client is dormant by PI
+  decision June 2026): the documented `R;1;;<CMD>;...;\r\n` shape would need
+  verification against the official reference before ever enabling
+  `IMOTIONS_REMOTE_ENABLED=1`. Only the `format_*` helpers would change.
 
-## 7. File-Import Fallback
+## 8. File-Import Fallback
 
 If live marker streaming proves infeasible (network issue, version mismatch, license limitation), iMotions supports post-hoc data import:
 
