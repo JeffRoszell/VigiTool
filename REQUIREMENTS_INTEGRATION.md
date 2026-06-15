@@ -20,7 +20,9 @@ is end-to-end validation on the lab machine — see `docs/imotions_e2e_test_plan
 ### 1.1 B-Alert X-24 (EEG)
 - Wireless wet electrode system, 20 channels, International 10-20 layout
 - Sampled at 256 Hz with online notch and low-pass FIR filtering
-- Software: B-Alert Live
+- Software: **B-Alert Live 3.1x** (lab confirmed June 2026, U. Gupta; renewed
+  ABM license being activated). Acquired by iMotions through its bundled ABM
+  B-Alert SDK — the task software never talks to B-Alert directly.
 - Needs event markers synchronized to task events for ERP/spectral analysis
 
 ### 1.2 Smarteye (Eye-Tracking)
@@ -29,6 +31,11 @@ is end-to-end validation on the lab machine — see `docs/imotions_e2e_test_plan
   in earlier drafts is not used)
 - Calibration runs through iMotions' UI; recalibration required after every
   5-minute break (see §6.4 session-level markers)
+- **Version dependency**: iMotions 11.1.0 fixed a bug where Smart Eye trackers
+  fail to calibrate when the Smart Eye Tracker *software* is ≤ 10.0.0; iMotions
+  supports Smart Eye Tracker software 10.1.2+. Because our protocol recalibrates
+  after every break, **confirm the lab's Smart Eye Tracker software is ≥ 10.1.2**
+  (separate from the iMotions version) before running participants.
 - Receives task event markers via iMotions like all other sensors
 
 ---
@@ -242,7 +249,15 @@ useful for post-hoc debugging of clock skew or dropped markers.
 
 ## 7. Open Items
 - **iMotions / B-Alert Live / Smarteye software versions on lab machine**
-  (Q10): PI to confirm after reconnecting with James.
+  (Q10): **Resolved (June 2026, U. Gupta)** — iMotions **11.1.5**, B-Alert Live
+  **3.1x** (license activation in progress). Our marker/Remote Control wire
+  format is unchanged across the iMotions 11.1.x line (the code was validated
+  against the Feb 2026 reference = 11.1.0; published 11.1.1–11.1.3 release notes
+  touch no API surface we use). Remaining verification — read the 11.1.4/11.1.5
+  notes directly, confirm iMotions 11.1.5 ↔ B-Alert Live 3.1x compatibility once
+  the license activates, and confirm Smart Eye Tracker software ≥ 10.1.2 — is
+  folded into `docs/imotions_e2e_test_plan.md` §0a. See
+  `INTEGRATION_VERSION_PLAN.md`.
 - **iMotions study setup**: shared `Vigilance_CVT_PVT` study to be built with
   the PI after James's handover (joint call being scheduled).
 - Hardware access on the lab machine needed for end-to-end testing — see

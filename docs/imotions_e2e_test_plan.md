@@ -22,7 +22,34 @@ X-24 and Smarteye paired through iMotions (PI June 2026: no Tobii).
 - [ ] `pytest tests/` runs green
 - [ ] iMotions Global Settings → API → Event Receiving API enabled, TCP, port 8089
 - [ ] iMotions Global Settings → API → Remote Control API enabled, TCP, port 8087
-- [ ] Note the installed iMotions version (resolves `QUESTIONS_INTEGRATION.md` Q10)
+- [ ] Note the installed iMotions version (Q10 confirms **11.1.5**)
+
+---
+
+## 0a. Version compatibility checks (do before §1)
+
+The lab is on **iMotions 11.1.5** and **B-Alert Live 3.1x** (Q10, June 2026).
+The marker/Remote Control wire format is unchanged across the iMotions 11.1.x
+line — the code was validated against the Feb 2026 reference (= 11.1.0), and the
+published 11.1.1–11.1.3 notes touch no API surface we use. These checks confirm
+that on the actual machine before participants run. See `INTEGRATION_VERSION_PLAN.md`.
+
+- [ ] **iMotions build** is **11.1.5** (Help → About). Read the **11.1.4 and
+      11.1.5 release notes** (newer than the snapshot reviewed in the plan) and
+      confirm no late change to the Event Receiving or Remote Control API.
+- [ ] **B-Alert Live 3.1x** installed and licensed; the X-24 appears as a
+      connected EEG device inside iMotions. Run an impedance check and a
+      one-minute capture; confirm all 20 channels stream with correct labels
+      (channel labelling feeds the EEG indices — Engagement Index at Cz/P3/P4/Pz,
+      Frontal Theta, etc.). If labels look wrong, check with iMotions/ABM support
+      that 11.1.5 recognizes B-Alert Live 3.1x.
+- [ ] **Smart Eye Tracker software ≥ 10.1.2** (iMotions 11.1.0 fixed a
+      calibration failure for ≤ 10.0.0). After the initial calibration, exercise
+      a **mid-session recalibration** to validate the every-break path against
+      this version.
+- [ ] **Marker export is clear text.** After §1, export one marker and confirm it
+      lands as a plain label (iMotions 11.x switched marker export from
+      URL-encoded to clear text; our labels have no reserved characters).
 
 ---
 
@@ -47,6 +74,10 @@ c.close()
 - [ ] `connect()` returns True (no `ConnectionRefusedError`)
 - [ ] Three markers appear in the iMotions timeline (one discrete, one scene
       pair) with correct names
+- [ ] Bytes match the helpers on this 11.1.5 install — compare the live result
+      to `format_discrete("e2e_smoke","hello from python")` and the
+      `format_scene_start/end` output; any mismatch is fixed in the `format_*`
+      helpers only
 - [ ] No errors in the iMotions log
       (`C:\ProgramData\iMotions\Lab_XG\Log\imotions.log`)
 
@@ -198,6 +229,7 @@ code is already structured to allow this with a one-line change in the emitter.
 
 ## 7. Sign-off
 
+- [ ] §0a version checks pass (iMotions 11.1.5, B-Alert Live 3.1x, Smart Eye ≥ 10.1.2)
 - [ ] §1 passes
 - [ ] §3 passes
 - [ ] §4 passes
@@ -211,3 +243,4 @@ Once all sections pass, the branch is ready to merge to `main`.
 ---
 
 *Prepared by Jeff Roszell — May 2026*
+*Added §0a version compatibility checks for iMotions 11.1.5 / B-Alert Live 3.1x — June 2026*

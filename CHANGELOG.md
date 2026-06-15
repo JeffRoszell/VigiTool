@@ -30,6 +30,14 @@ Incorporates PI answers to the workflow & study-design questions
   integration), sub-millisecond sync target met by localhost TCP (no hardware
   trigger), RA starts the iMotions recording (Remote Control flag stays off),
   one shared iMotions study with a respondent per participant.
+- **Lab software versions pinned (resolves Q10).** iMotions **11.1.5** and
+  B-Alert Live **3.1x** confirmed (U. Gupta). Marker/Remote Control wire format
+  is unchanged across the iMotions 11.1.x line, so no `src/` change is required;
+  `REQUIREMENTS_INTEGRATION.md` and `QUESTIONS_INTEGRATION.md` updated, and
+  `docs/imotions_e2e_test_plan.md` gains a §0a version-compatibility checklist
+  (B-Alert Live 3.1x recognition, Smart Eye Tracker software ≥ 10.1.2 for the
+  every-break recalibration path, live marker-byte diff). See
+  `INTEGRATION_VERSION_PLAN.md`.
 
 ## [0.2.0] – 2026-05-06 — Protocol: U3
 

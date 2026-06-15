@@ -51,7 +51,18 @@ These questions relate to the planned integration of the vigilance task software
    > *Low priority*: TCP over localhost has no special hardware requirements. Still worth confirming the OS (PsychoPy and iMotions both run on Windows, which is assumed).
 
 10. **Software versions**: What versions of B-Alert Live, Tobii Pro Lab, and Smarteye software are installed?
-    > *Still open (June 2026)*: PI will reconnect with James in person and confirm versions. Tobii Pro Lab no longer applies (Smarteye only).
+    > **Resolved (June 2026, U. Gupta)**: iMotions **11.1.5**; B-Alert Live **3.1x**
+    > (renewed ABM license being activated, then updated to the current build).
+    > Tobii Pro Lab no longer applies (Smarteye only). Our marker/Remote Control
+    > wire format is unchanged across the iMotions 11.1.x line — the code was
+    > validated against the Feb 2026 reference implementation (= 11.1.0), and the
+    > published 11.1.1–11.1.3 release notes change no API surface we use. Three
+    > items move to the lab E2E checklist (`docs/imotions_e2e_test_plan.md` §0a):
+    > read the 11.1.4/11.1.5 notes directly, confirm iMotions 11.1.5 ↔ B-Alert
+    > Live 3.1x compatibility once the license activates, and confirm Smart Eye
+    > Tracker software ≥ 10.1.2 (iMotions 11.1.0 fixed a calibration bug for
+    > older Smart Eye software, which matters for our every-break recalibration).
+    > See `INTEGRATION_VERSION_PLAN.md`.
 
 11. **Existing Python packages**: Are there any Python packages already installed on the lab machine for interfacing with these systems (e.g., `pylsl`, `tobii_research`)?
     > **Resolved**: Not needed. Only Python's built-in `socket` module is required for the marker path.
@@ -108,3 +119,4 @@ These questions arose after confirming the live API is viable. They affect study
 *Resolved 6 of 11 questions and added workflow questions for PI — May 2026*
 *Phase 2 implementation: resolved Q12, Q14, Q15, Q16, Q18 with PI choices baked into code — May 2026*
 *PI answers received (Jeff_questions_U2): resolved Q3, Q6, Q8, Q13, Q17, Q19, Q20; confirmed Q12 option (a); added error-of-omission/commission markers and recalibration holds — June 2026*
+*Software versions confirmed (U. Gupta): iMotions 11.1.5, B-Alert Live 3.1x — resolved Q10; version verification folded into the lab E2E plan — June 2026*
