@@ -52,11 +52,12 @@ pip install six scipy "pyglet==1.5.27" numpy pillow pyopengl wxPython configobj 
 
 ```bash
 # From the project root (so data/ saves in the right place)
-python src/cvt_task.py   # Cognitive Vigilance Task
-python src/pvt_task.py   # Psychomotor Vigilance Task  (coming soon)
+python src/run_session.py   # Full session: both tasks with breaks (recommended)
+python src/cvt_task.py      # CVT only
+python src/pvt_task.py      # PVT only
 ```
 
-A dialog will appear at launch — enter participant ID, age, difficulty, and optionally tick **Test mode** for a 2-minute run.
+A dialog appears at launch. `run_session.py` collects participant ID, task order (CVT → PVT or PVT → CVT), per-task difficulty order, and an optional **Test mode** for a short run; the per-task entry points collect a smaller subset.
 
 ---
 
@@ -98,7 +99,7 @@ VigiTool/
 |-----------|--------|
 | CVT (PsychoPy) | Complete |
 | PVT (PsychoPy) | Complete |
-| Unified launcher | Planned |
+| Unified launcher (`run_session.py`) | Complete |
 | iMotions integration | Implemented (marker streaming; awaiting lab E2E) |
 | EEG / eye-tracking | Planned (Phase 3) |
 
