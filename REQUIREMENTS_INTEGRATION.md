@@ -29,13 +29,19 @@ is end-to-end validation on the lab machine — see `docs/imotions_e2e_test_plan
 - **PI decision (June 2026)**: Smarteye is the study's eye tracker, integrated
   through iMotions — **no Tobii integration** (the Tobii Pro Fusion described
   in earlier drafts is not used)
+- **Device (PsychDept update, June 2026)**: the lab acquired a Smart Eye
+  **Aurora** in addition to the **AI-X** discussed earlier. Aurora is the
+  preferred device; AI-X is supported as a fallback. The task software is
+  device-agnostic — selection happens in iMotions' device manager. The active
+  device id is recorded in session metadata and the iMotions session scene
+  description for downstream traceability (see §6.4, §6.5).
 - Calibration runs through iMotions' UI; recalibration required after every
   5-minute break (see §6.4 session-level markers)
 - **Version dependency**: iMotions 11.1.0 fixed a bug where Smart Eye trackers
   fail to calibrate when the Smart Eye Tracker *software* is ≤ 10.0.0; iMotions
-  supports Smart Eye Tracker software 10.1.2+. Because our protocol recalibrates
-  after every break, **confirm the lab's Smart Eye Tracker software is ≥ 10.1.2**
-  (separate from the iMotions version) before running participants.
+  supports Smart Eye Tracker software 10.1.2+. The ≥ 10.1.2 constraint applies
+  to the AI-X / Pro line; Aurora ships with its own firmware bundle, so verify
+  Aurora support in the lab's iMotions 11.1.5 device list before first use.
 - Receives task event markers via iMotions like all other sensors
 
 ---
@@ -222,11 +228,14 @@ PVT:
   `type=anticipatory,rt=<ms>,trial=<n>`
 
 Session-level:
-- `session_<pid>_<ts>` — scene pair wrapping the whole run
+- `session_<pid>_<ts>` — scene pair wrapping the whole run; description carries
+  `pid=<id>,eye_tracker=<aurora|ai_x>` for downstream device traceability
 - `session_break_start` / `session_break_end` — discrete around the 5-min inter-task break
 - `recalibration_start` / `recalibration_end` — discrete pair around the RA
   eye-tracking recalibration hold that follows **every** 5-min break
-  (between blocks within a task and between tasks; PI decision June 2026)
+  (between blocks within a task and between tasks; PI decision June 2026).
+  Hold screen shows the configured device name so the RA knows which device
+  to recalibrate.
 
 ### 6.5 Configuration
 
@@ -237,6 +246,9 @@ Env vars (see `src/imotions_config.py`):
 - `IMOTIONS_EVENT_PORT` (default `8089`)
 - `IMOTIONS_REMOTE_PORT` (default `8087`)
 - `IMOTIONS_STUDY_NAME` (default `Vigilance_CVT_PVT`)
+- `IMOTIONS_EYE_TRACKER` (default `aurora`; allowed `aurora` | `ai_x`).
+  Recorded in session JSON metadata and the iMotions session scene
+  description; selection of the actual device still happens inside iMotions.
 
 ### 6.6 Sidecar log
 

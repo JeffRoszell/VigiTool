@@ -276,6 +276,7 @@ def save_data(
     test_mode: bool,
     trials: list[dict],
     timestamp: str,
+    eye_tracker: str | None = None,
 ) -> Path:
     mode = "test" if test_mode else "full"
     suffix = "_test" if test_mode else ""
@@ -295,6 +296,7 @@ def save_data(
             "total_signals": SIGNALS_PER_PERIOD * NUM_PERIODS[mode],
             "is_practice": False,
             "test_mode": test_mode,
+            "eye_tracker": eye_tracker,
         },
         "performance": compute_sdt(trials),
         "period_performance": compute_period_metrics(trials, NUM_PERIODS[mode]),
@@ -617,6 +619,7 @@ def run_full_session(
     skip_practice: bool = False,
     break_minutes: Optional[float] = None,
     marker_client: Any | None = None,
+    eye_tracker: str | None = None,
 ) -> bool:
     """Run a full CVT session: practice → block1 → break → block2.
 
@@ -652,7 +655,10 @@ def run_full_session(
         finally:
             emitter.block_end(difficulty)
 
-        filename = save_data(participant_id, difficulty, test_mode, trials, timestamp)
+        filename = save_data(
+            participant_id, difficulty, test_mode, trials, timestamp,
+            eye_tracker=eye_tracker,
+        )
         if escaped:
             return True
 
@@ -662,7 +668,7 @@ def run_full_session(
             mins = break_minutes if break_minutes is not None else BREAK_MINUTES
             if not timed_break(win, minutes=mins, label="BREAK BETWEEN BLOCKS"):
                 return True
-            if not recalibration_hold(win, marker_client):
+            if not recalibration_hold(win, marker_client, eye_tracker=eye_tracker):
                 return True
 
     return False

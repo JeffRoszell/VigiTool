@@ -102,10 +102,18 @@ def run(
         if remote_client is not None:
             remote_client.start_study(cfg.study_name, participant_id)
         session_label = f"session_{participant_id}_{timestamp}"
-        event_client.scene_start(session_label, description=f"pid={participant_id}")
+        event_client.scene_start(
+            session_label,
+            description=f"pid={participant_id},eye_tracker={cfg.eye_tracker}",
+        )
 
+        tracker_display = cfg.eye_tracker_display
         for i, task in enumerate(task_order):
-            kwargs = {"break_minutes": break_minutes, "marker_client": event_client}
+            kwargs = {
+                "break_minutes": break_minutes,
+                "marker_client": event_client,
+                "eye_tracker": tracker_display,
+            }
             if task == "cvt":
                 kwargs["skip_practice"] = False
             escaped = runners[task](
@@ -127,7 +135,9 @@ def run(
                     return True
                 # Per PI decision (June 2026): breaks require eye-tracking
                 # recalibration before the next task begins.
-                if not recalibration_hold(win, event_client):
+                if not recalibration_hold(
+                    win, event_client, eye_tracker=tracker_display,
+                ):
                     return True
     finally:
         try:
