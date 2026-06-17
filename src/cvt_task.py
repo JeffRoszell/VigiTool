@@ -6,7 +6,9 @@ import math
 import random
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+from imotions_api import NoOpMarkerClient
 
 if TYPE_CHECKING:
     from psychopy import core, visual  # type stubs only — not imported at runtime
@@ -34,6 +36,78 @@ STIM_POS = {
     "center":      ( 0.0,  0.0),
 }
 JITTER = 0.05   # ± norm units
+
+
+# ── iMotions marker labels ─────────────────────────────────────────────────
+
+
+class CvtMarkerEmitter:
+    """Translates CVT events into iMotions marker calls.
+
+    Owns the label-string contract for CVT. Tests exercise this class directly
+    with a fake client; production wires a real EventReceivingAPI through.
+    Per the PI decision (May 2026), labels distinguish signal vs non-signal
+    trials and use scene_start/scene_end pairs for stimulus and block ranges.
+    """
+
+    def __init__(self, client: Any | None = None) -> None:
+        self.client = client if client is not None else NoOpMarkerClient()
+
+    def block_start(self, difficulty: str) -> None:
+        self.client.scene_start(f"cvt_{difficulty}_block")
+
+    def block_end(self, difficulty: str) -> None:
+        self.client.scene_end(f"cvt_{difficulty}_block")
+
+    def practice_start(self, difficulty: str) -> None:
+        self.client.scene_start(f"cvt_practice_{difficulty}")
+
+    def practice_end(self, difficulty: str) -> None:
+        self.client.scene_end(f"cvt_practice_{difficulty}")
+
+    def period(self, period_num: int) -> None:
+        self.client.discrete(f"cvt_period_{period_num}")
+
+    def stim_onset(self, trial: dict) -> None:
+        kind = "signal" if trial["is_signal"] else "nonsignal"
+        # Practice trials carry no "period" key — report period=0 for them.
+        self.client.scene_start(
+            f"cvt_{kind}_stim",
+            f"trial={trial['trial_number']},period={trial.get('period', 0)}",
+        )
+
+    def stim_offset(self, trial: dict) -> None:
+        kind = "signal" if trial["is_signal"] else "nonsignal"
+        self.client.scene_end(f"cvt_{kind}_stim")
+
+    def response(self, trial: dict, rt_ms: float) -> None:
+        kind = "signal" if trial["is_signal"] else "nonsignal"
+        self.client.discrete(
+            "cvt_response",
+            f"rt={rt_ms:.1f},trial={trial['trial_number']},kind={kind}",
+        )
+
+    # Per PI decision (June 2026, Jeff_questions_U2): every scored trial gets
+    # a discrete outcome marker; misses and false alarms are labeled errors of
+    # omission and commission so epochs can be selected directly in iMotions.
+    _OUTCOME_MARKERS = {
+        "hit": "cvt_hit",
+        "miss": "cvt_error_omission",
+        "false_alarm": "cvt_error_commission",
+        "correct_rejection": "cvt_correct_rejection",
+    }
+
+    def outcome(self, trial: dict) -> None:
+        name = self._OUTCOME_MARKERS.get(trial.get("outcome"))
+        if name is None:
+            return
+        rt = trial.get("reaction_time_ms")
+        rt_str = f"{rt:.1f}" if rt is not None else "none"
+        self.client.discrete(
+            name,
+            f"outcome={trial['outcome']},trial={trial['trial_number']},"
+            f"period={trial.get('period', 0)},rt={rt_str}",
+        )
 
 
 # ── Trial generation ───────────────────────────────────────────────────────
@@ -202,6 +276,7 @@ def save_data(
     test_mode: bool,
     trials: list[dict],
     timestamp: str,
+    eye_tracker: str | None = None,
 ) -> Path:
     mode = "test" if test_mode else "full"
     suffix = "_test" if test_mode else ""
@@ -221,6 +296,7 @@ def save_data(
             "total_signals": SIGNALS_PER_PERIOD * NUM_PERIODS[mode],
             "is_practice": False,
             "test_mode": test_mode,
+            "eye_tracker": eye_tracker,
         },
         "performance": compute_sdt(trials),
         "period_performance": compute_period_metrics(trials, NUM_PERIODS[mode]),
@@ -367,6 +443,7 @@ def run_task(
     difficulty: str,
     block_clock: core.Clock,
     show_all_feedback: bool = False,
+    emitter: Optional[CvtMarkerEmitter] = None,
 ) -> tuple[list[dict], bool]:
     """Returns (trials_with_outcomes, escaped).
 
@@ -375,6 +452,9 @@ def run_task(
     Otherwise only HIT and FALSE ALARM are shown (real-task behaviour).
     """
     from psychopy import core, event, visual  # noqa: PLC0415
+
+    if emitter is None:
+        emitter = CvtMarkerEmitter()
 
     isi_s = ISI_S[difficulty]
 
@@ -388,8 +468,15 @@ def run_task(
         win, text="", height=fb_height, pos=fb_pos, bold=True,
     )
 
+    prev_period: Optional[int] = None
+
     for trial in trials:
         event.clearEvents()
+
+        period_num = trial.get("period")
+        if period_num is not None and period_num != prev_period:
+            emitter.period(period_num)
+            prev_period = period_num
 
         stim_obj.setPos(_jittered_pos(trial["location"]))
         stim_obj.setText(trial["stimulus"])
@@ -404,6 +491,7 @@ def run_task(
         stim_obj.draw()
         win.flip()
         trial_clock.reset()
+        emitter.stim_onset(trial)
 
         while trial_clock.getTime() < STIM_DURATION:
             t_now = trial_clock.getTime()
@@ -414,6 +502,7 @@ def run_task(
                     rt_ms = kt * 1000
                     response_t = kt
                     responded = True
+                    emitter.response(trial, rt_ms)
                     if trial["is_signal"]:
                         feedback_obj.setColor("green")
                         feedback_obj.setText("HIT")
@@ -425,6 +514,8 @@ def run_task(
             if responded and response_t is not None and (t_now - response_t) < FEEDBACK_DURATION:
                 feedback_obj.draw()
             win.flip()
+
+        emitter.stim_offset(trial)
 
         # ── Blank / ISI with fixation ──────────────────────────
         isi_end = STIM_DURATION + isi_s
@@ -438,6 +529,7 @@ def run_task(
                     rt_ms = kt * 1000
                     response_t = kt
                     responded = True
+                    emitter.response(trial, rt_ms)
                     if trial["is_signal"]:
                         feedback_obj.setColor("green")
                         feedback_obj.setText("HIT")
@@ -458,6 +550,7 @@ def run_task(
             trial["outcome"] = "hit" if responded else "miss"
         else:
             trial["outcome"] = "false_alarm" if responded else "correct_rejection"
+        emitter.outcome(trial)
 
         # ── Practice-only: feedback for misses & correct rejections ──
         if show_all_feedback and not responded:
@@ -479,12 +572,19 @@ def run_task(
     return trials, False
 
 
-def run_practice(win: visual.Window, test_mode: bool = False) -> bool:
+def run_practice(
+    win: visual.Window,
+    test_mode: bool = False,
+    emitter: Optional[CvtMarkerEmitter] = None,
+) -> bool:
     """Single practice session: low then high difficulty.
 
     Returns True if escaped, False on normal completion.
     """
     from psychopy import core  # noqa: PLC0415
+
+    if emitter is None:
+        emitter = CvtMarkerEmitter()
 
     if not _practice_intro(win):
         return True
@@ -494,9 +594,14 @@ def run_practice(win: visual.Window, test_mode: bool = False) -> bool:
         # Practice is short — clock starts fresh per segment
         clk = core.Clock()
         clk.reset()
-        _, escaped = run_task(
-            win, trials, difficulty, clk, show_all_feedback=True,
-        )
+        emitter.practice_start(difficulty)
+        try:
+            _, escaped = run_task(
+                win, trials, difficulty, clk,
+                show_all_feedback=True, emitter=emitter,
+            )
+        finally:
+            emitter.practice_end(difficulty)
         if escaped:
             return True
     return False
@@ -513,6 +618,8 @@ def run_full_session(
     *,
     skip_practice: bool = False,
     break_minutes: Optional[float] = None,
+    marker_client: Any | None = None,
+    eye_tracker: str | None = None,
 ) -> bool:
     """Run a full CVT session: practice → block1 → break → block2.
 
@@ -520,9 +627,15 @@ def run_full_session(
     """
     from psychopy import core  # noqa: PLC0415
 
-    from session_utils import BREAK_MINUTES, timed_break  # noqa: PLC0415
+    from session_utils import (  # noqa: PLC0415
+        BREAK_MINUTES,
+        recalibration_hold,
+        timed_break,
+    )
 
-    if not skip_practice and run_practice(win, test_mode=test_mode):
+    emitter = CvtMarkerEmitter(marker_client)
+
+    if not skip_practice and run_practice(win, test_mode=test_mode, emitter=emitter):
         return True
 
     n_periods = NUM_PERIODS["test" if test_mode else "full"]
@@ -534,9 +647,18 @@ def run_full_session(
 
         trials = build_trial_sequence(difficulty, test_mode)
         block_clock.reset()
-        trials, escaped = run_task(win, trials, difficulty, block_clock)
+        emitter.block_start(difficulty)
+        try:
+            trials, escaped = run_task(
+                win, trials, difficulty, block_clock, emitter=emitter,
+            )
+        finally:
+            emitter.block_end(difficulty)
 
-        filename = save_data(participant_id, difficulty, test_mode, trials, timestamp)
+        filename = save_data(
+            participant_id, difficulty, test_mode, trials, timestamp,
+            eye_tracker=eye_tracker,
+        )
         if escaped:
             return True
 
@@ -545,6 +667,8 @@ def run_full_session(
         if block_num < len(difficulty_order):
             mins = break_minutes if break_minutes is not None else BREAK_MINUTES
             if not timed_break(win, minutes=mins, label="BREAK BETWEEN BLOCKS"):
+                return True
+            if not recalibration_hold(win, marker_client, eye_tracker=eye_tracker):
                 return True
 
     return False

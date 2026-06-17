@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Vigilance task suite for IRB #0007078 (PI: Poltavski, Co-PI: Gupta) at UND Psychology Department. Compares sustained attention in younger (18-35) and older (65+) adults using two tasks with concurrent EEG and eye-tracking (future integration phase).
+Vigilance task suite for IRB #0007078 (PI: Poltavski, Co-PI: Gupta) at UND Psychology Department. Compares sustained attention in younger (18-35) and older (65+) adults using two tasks with concurrent EEG and eye-tracking (Smarteye) synchronized through iMotions.
 
 **Lead Developer**: Jeff Roszell (BME master's student)
 
@@ -27,7 +27,7 @@ PsychDept/
 ├── .claude/agents/         # Custom agents (sme, compliance, e2e-test)
 ├── .github/workflows/      # CI pipeline
 ├── REQUIREMENTS.md          # Core task requirements
-├── REQUIREMENTS_INTEGRATION.md  # EEG/eye-tracking integration (future)
+├── REQUIREMENTS_INTEGRATION.md  # EEG/eye-tracking integration (implemented)
 ├── QUESTIONS_FOR_PI.md      # Open questions for Poltavski/Gupta
 └── QUESTIONS_INTEGRATION.md # Open questions for hardware integration
 ```
@@ -78,4 +78,4 @@ Participant data saves to `data/<participant_id>/` with format `<task>_<difficul
 - SDT metrics use correct Abramowitz & Stegun z-score approximation
 - ESC key triggers emergency exit with data save
 - Task timing: ISI controls event rate (500ms = high difficulty, 1500ms = low difficulty), stimulus duration is 1000ms for CVT
-- iMotions integration via TCP markers on port 8089 (Phase 2)
+- iMotions integration implemented: TCP markers on port 8089 (Event Receiving API), fail-soft, async sender; Smarteye-only eye tracking (no Tobii); recalibration hold after every 5-min break

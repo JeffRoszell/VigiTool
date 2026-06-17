@@ -8,8 +8,10 @@
 
 ---
 
-## Status: Planning Phase
-This is a separate development phase from the core CVT/PVT task software. Implementation depends on answers from `QUESTIONS_INTEGRATION.md`.
+## Status: Phase 2 Implemented (Pending Lab E2E)
+The marker streaming path is implemented and unit-tested. The Remote Control
+client is implemented behind a feature flag (default off). The remaining work
+is end-to-end validation on the lab machine — see `docs/imotions_e2e_test_plan.md`.
 
 ---
 
@@ -18,18 +20,29 @@ This is a separate development phase from the core CVT/PVT task software. Implem
 ### 1.1 B-Alert X-24 (EEG)
 - Wireless wet electrode system, 20 channels, International 10-20 layout
 - Sampled at 256 Hz with online notch and low-pass FIR filtering
-- Software: B-Alert Live
+- Software: **B-Alert Live 3.1x** (lab confirmed June 2026, U. Gupta; renewed
+  ABM license being activated). Acquired by iMotions through its bundled ABM
+  B-Alert SDK — the task software never talks to B-Alert directly.
 - Needs event markers synchronized to task events for ERP/spectral analysis
 
-### 1.2 Tobii Pro Fusion (Eye-Tracking)
-- 120 Hz sampling rate
-- Software: Tobii Pro Lab
-- 9-point calibration, participant seated 60 cm from tracker
-- Needs event markers for gaze analysis aligned to task events
-
-### 1.3 Smarteye
-- Role in study TBD (see questions doc)
-- May need event markers depending on role
+### 1.2 Smarteye (Eye-Tracking)
+- **PI decision (June 2026)**: Smarteye is the study's eye tracker, integrated
+  through iMotions — **no Tobii integration** (the Tobii Pro Fusion described
+  in earlier drafts is not used)
+- **Device (PsychDept update, June 2026)**: the lab acquired a Smart Eye
+  **Aurora** in addition to the **AI-X** discussed earlier. Aurora is the
+  preferred device; AI-X is supported as a fallback. The task software is
+  device-agnostic — selection happens in iMotions' device manager. The active
+  device id is recorded in session metadata and the iMotions session scene
+  description for downstream traceability (see §6.4, §6.5).
+- Calibration runs through iMotions' UI; recalibration required after every
+  5-minute break (see §6.4 session-level markers)
+- **Version dependency**: iMotions 11.1.0 fixed a bug where Smart Eye trackers
+  fail to calibrate when the Smart Eye Tracker *software* is ≤ 10.0.0; iMotions
+  supports Smart Eye Tracker software 10.1.2+. The ≥ 10.1.2 constraint applies
+  to the AI-X / Pro line; Aurora ships with its own firmware bundle, so verify
+  Aurora support in the lab's iMotions 11.1.5 device list before first use.
+- Receives task event markers via iMotions like all other sensors
 
 ---
 
@@ -43,13 +56,15 @@ Even before hardware integration, the task software should maintain a high-preci
 - Timestamp (ms precision, relative to block start)
 - Trial metadata (signal/non-signal, quadrant, stimulus value, difficulty)
 
-### 2.2 Marker Interface (Future)
-- Abstract marker interface in the code that can be connected to:
-  - LSL (Lab Streaming Layer) — likely candidate for B-Alert
-  - Tobii Pro SDK — for Tobii Pro Fusion
-  - Serial/TTL — if hardware supports it
-  - UDP — if network-based
-- The interface should be pluggable so integration doesn't require rewriting task logic
+### 2.2 Marker Interface (Implemented — May 2026)
+- Implemented as `src/imotions_api.py` (`EventReceivingAPI`, `RemoteControlAPI`,
+  `LoggingMarkerClient`, `NoOpMarkerClient`) and per-task emitter classes
+  (`CvtMarkerEmitter`, `PvtMarkerEmitter`) that own the label-string contract.
+- Stdlib `socket` + `threading` + `queue` only — no new runtime deps.
+- The task functions accept a `marker_client` argument and default to a no-op,
+  so tests and dev runs continue to work without iMotions.
+- LSL / Tobii SDK / TTL / UDP are no longer in scope: all biosensor sync runs
+  through iMotions.
 
 ---
 
@@ -75,7 +90,7 @@ These inform what events need precise marking:
 
 ## 5. iMotions API — Research Findings
 
-iMotions serves as the synchronization hub for all biosensors (B-Alert, Tobii, Smarteye). The task software communicates with iMotions via its external API rather than integrating with each sensor SDK directly.
+iMotions serves as the synchronization hub for all biosensors (B-Alert, Smarteye). The task software communicates with iMotions via its external API rather than integrating with each sensor SDK directly.
 
 ### 5.1 Connection
 
@@ -153,12 +168,118 @@ The April 2026 marker-format table in this section was wrong. It listed discrete
 
 ---
 
-## 6. Open Items
-- Remaining items in `QUESTIONS_INTEGRATION.md` (Smarteye role, timing precision, lab specs, installed iMotions version) must be resolved before full implementation
-- Hardware access on the lab machine needed for end-to-end testing
-- No non-standard Python packages required for the marker path — stdlib `socket` is sufficient
+## 6. Implementation Notes (Phase 2 — May 2026)
 
-## 7. File-Import Fallback
+### 6.1 Modules
+
+| File | Purpose |
+|------|---------|
+| `src/imotions_api.py` | `EventReceivingAPI` (8089), `RemoteControlAPI` (8087), `LoggingMarkerClient`, `NoOpMarkerClient`, wire-format helpers |
+| `src/imotions_config.py` | Env-var driven config (host, ports, feature flags, study name) |
+| `src/cvt_task.py` | Adds `CvtMarkerEmitter`; `run_task` / `run_practice` / `run_full_session` accept an `emitter` / `marker_client` argument |
+| `src/pvt_task.py` | Adds `PvtMarkerEmitter`; same wiring pattern as CVT |
+| `src/run_session.py` | Opens one continuous Event Receiving connection across the whole session, optionally opens Remote Control, wraps everything in `session_<pid>_<ts>` scene, tears down in `finally` |
+
+### 6.2 Design choices (locked with PI, May 2026)
+
+| Decision | Choice |
+|----------|--------|
+| Recording continuity (Q18) | One continuous Event Receiving recording across the whole session |
+| Remote Control (Q12) | Built but feature-flagged off (default); RA starts iMotions manually until verified |
+| Marker granularity per trial (Q14) | Most granular: `scene_start` (onset) + `scene_end` (offset) + discrete `response` |
+| Signal vs non-signal labels (Q15) | Distinguish (`cvt_signal_stim`, `cvt_nonsignal_stim`) |
+| Failure tolerance (Q16) | Continue with warning logged locally; behavioral JSON is the primary record — reconfirmed by PI June 2026 (acceptable while disconnects stay rare) |
+| Error labeling (Q6, June 2026) | Per-trial outcome markers; misses = `*_error_omission`, false alarms / anticipatory = `*_error_commission` |
+| Recalibration (Q19, June 2026) | RA hold screen + `recalibration_start/end` markers after every 5-min break |
+| Eye tracking (Q3, June 2026) | Smarteye via iMotions only — no Tobii integration |
+| Timing precision (Q17, June 2026) | Sub-millisecond sufficient; localhost TCP, no hardware trigger |
+| Recording start (Q12, June 2026) | Confirmed option (a): RA starts iMotions; Remote Control flag stays off |
+
+### 6.3 Async, fail-soft sender
+
+`EventReceivingAPI` runs a daemon thread + bounded `queue.Queue` (default 8192 slots).
+Marker calls in the trial loop enqueue bytes and return; the worker drains and
+`sendall`s. Any socket error (connect or send) flips `enabled=False`, closes the
+socket, and silently drops subsequent calls. The trial loop never sees an exception.
+
+### 6.4 Per-trial marker label set
+
+CVT:
+- `cvt_<difficulty>_block` — scene pair (per block)
+- `cvt_practice_<difficulty>` — scene pair (each practice segment)
+- `cvt_period_<n>` — discrete, on first trial of each new period
+- `cvt_signal_stim` / `cvt_nonsignal_stim` — scene pair (per trial)
+- `cvt_response` — discrete with `rt=<ms>,trial=<n>,kind=signal|nonsignal`
+- `cvt_hit` / `cvt_correct_rejection` / `cvt_error_omission` (miss) /
+  `cvt_error_commission` (false alarm) — discrete outcome marker per scored
+  trial, description `outcome=...,trial=<n>,period=<p>,rt=<ms|none>`
+  (PI decision June 2026)
+
+PVT:
+- `pvt_<difficulty>_block` — scene pair (per block)
+- `pvt_period_<n>` — discrete, on first trial of each new period
+- `pvt_stim` — scene pair (per trial; description `trial=<n>,period=<p>`)
+- `pvt_response` — discrete with `rt=<ms|none>,type=valid|lapse|anticipatory|timeout,trial=<n>`
+- `pvt_anticipatory` — discrete on pre-stim press, `phase=isi|foreperiod`,
+  accompanied by `pvt_error_commission` (`type=anticipatory,phase=...`)
+- `pvt_error_omission` — discrete after lapse/timeout responses,
+  `type=lapse|timeout,rt=<ms|none>,trial=<n>` (PI decision June 2026)
+- `pvt_error_commission` — discrete after anticipatory responses,
+  `type=anticipatory,rt=<ms>,trial=<n>`
+
+Session-level:
+- `session_<pid>_<ts>` — scene pair wrapping the whole run; description carries
+  `pid=<id>,eye_tracker=<aurora|ai_x>` for downstream device traceability
+- `session_break_start` / `session_break_end` — discrete around the 5-min inter-task break
+- `recalibration_start` / `recalibration_end` — discrete pair around the RA
+  eye-tracking recalibration hold that follows **every** 5-min break
+  (between blocks within a task and between tasks; PI decision June 2026).
+  Hold screen shows the configured device name so the RA knows which device
+  to recalibrate.
+
+### 6.5 Configuration
+
+Env vars (see `src/imotions_config.py`):
+- `IMOTIONS_ENABLED` (default `1`)
+- `IMOTIONS_REMOTE_ENABLED` (default `0`)
+- `IMOTIONS_HOST` (default `127.0.0.1`)
+- `IMOTIONS_EVENT_PORT` (default `8089`)
+- `IMOTIONS_REMOTE_PORT` (default `8087`)
+- `IMOTIONS_STUDY_NAME` (default `Vigilance_CVT_PVT`)
+- `IMOTIONS_EYE_TRACKER` (default `aurora`; allowed `aurora` | `ai_x`).
+  Recorded in session JSON metadata and the iMotions session scene
+  description; selection of the actual device still happens inside iMotions.
+
+### 6.6 Sidecar log
+
+`run_session` writes a per-session marker log to
+`data/<pid>/session_<ts>.imotions.log`. Every marker call is recorded with a
+`perf_counter` timestamp regardless of whether iMotions actually received it —
+useful for post-hoc debugging of clock skew or dropped markers.
+
+---
+
+## 7. Open Items
+- **iMotions / B-Alert Live / Smarteye software versions on lab machine**
+  (Q10): **Resolved (June 2026, U. Gupta)** — iMotions **11.1.5**, B-Alert Live
+  **3.1x** (license activation in progress). Our marker/Remote Control wire
+  format is unchanged across the iMotions 11.1.x line (the code was validated
+  against the Feb 2026 reference = 11.1.0; published 11.1.1–11.1.3 release notes
+  touch no API surface we use). Remaining verification — read the 11.1.4/11.1.5
+  notes directly, confirm iMotions 11.1.5 ↔ B-Alert Live 3.1x compatibility once
+  the license activates, and confirm Smart Eye Tracker software ≥ 10.1.2 — is
+  folded into `docs/imotions_e2e_test_plan.md` §0a. See
+  `INTEGRATION_VERSION_PLAN.md`.
+- **iMotions study setup**: shared `Vigilance_CVT_PVT` study to be built with
+  the PI after James's handover (joint call being scheduled).
+- Hardware access on the lab machine needed for end-to-end testing — see
+  `docs/imotions_e2e_test_plan.md`.
+- **Remote Control wire format** (low priority — client is dormant by PI
+  decision June 2026): the documented `R;1;;<CMD>;...;\r\n` shape would need
+  verification against the official reference before ever enabling
+  `IMOTIONS_REMOTE_ENABLED=1`. Only the `format_*` helpers would change.
+
+## 8. File-Import Fallback
 
 If live marker streaming proves infeasible (network issue, version mismatch, license limitation), iMotions supports post-hoc data import:
 

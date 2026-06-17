@@ -1,5 +1,10 @@
 # Migration Plan: tkinter → PsychoPy + iMotions
 
+> **Historical document** (March 2026). The migration is complete; sensor
+> details here reflect the original plan (e.g. Tobii Pro Fusion, since dropped
+> in favor of Smarteye-only — June 2026). See REQUIREMENTS_INTEGRATION.md for
+> current state.
+
 ## Overview
 
 Migrate the vigilance task suite (CVT and PVT) from tkinter to PsychoPy, with iMotions integration for synchronized biosensor data collection (Smart Eye, Tobii Pro Fusion, B-Alert X-24 EEG).

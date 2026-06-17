@@ -3,6 +3,13 @@
 
 These questions arose during the software requirements phase and need clarification before implementation can begin. They are organized by task.
 
+> **Status (June 2026)**: These were resolved verbally during U3 protocol
+> development and are not individually annotated here. The implemented code
+> and REQUIREMENTS.md are authoritative for the decisions (e.g. 30 s stimulus
+> timeout, RT feedback shown for 1 s, fixed 500/1500 ms ISI). Later workflow
+> and integration questions live in QUESTIONS_INTEGRATION.md and the
+> `Background/` answer documents.
+
 ---
 
 ## Psychomotor Vigilance Task (PVT)

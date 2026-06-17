@@ -50,6 +50,41 @@ def timed_break(
         core.wait(0.05)
 
 
+def recalibration_hold(
+    win: visual.Window,
+    marker_client=None,
+    eye_tracker: str | None = None,
+) -> bool:
+    """RA hold screen for eye-tracking recalibration after a break.
+
+    Per the PI decision (June 2026, Jeff_questions_U2 Q10): the 5-minute
+    breaks between 24-minute blocks and between tasks require eye-tracking
+    recalibration because the participant may have shifted. The screen holds
+    until the RA confirms recalibration in iMotions; the interval is
+    bracketed with recalibration_start/end markers so it can be excluded
+    from analysis epochs.
+
+    ``eye_tracker`` is the display name of the Smart Eye device (e.g. "Aurora",
+    "AI-X"); when provided it is shown on the hold screen so the RA knows which
+    device to recalibrate.
+
+    Returns True to continue, False on ESC.
+    """
+    if marker_client is not None:
+        marker_client.discrete("recalibration_start")
+    device = f" ({eye_tracker})" if eye_tracker else ""
+    body = (
+        f"EYE-TRACKING RECALIBRATION{device}\n\n"
+        "Experimenter: the participant may have shifted during the break.\n"
+        "Recalibrate the eye tracker in iMotions now, then press SPACEBAR\n"
+        "to begin the next block."
+    )
+    ok = message_screen(win, body)
+    if marker_client is not None:
+        marker_client.discrete("recalibration_end")
+    return ok
+
+
 def message_screen(
     win: visual.Window,
     body: str,

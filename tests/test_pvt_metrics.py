@@ -8,9 +8,24 @@ from pvt_task import (
     LAPSE_THRESHOLD_MS,
     NUM_PERIODS,
     VALID_RT_MIN_MS,
+    PvtMarkerEmitter,
     compute_metrics,
     compute_period_metrics,
 )
+
+
+class _FakeMarkerClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple] = []
+
+    def discrete(self, name, description=""):
+        self.calls.append(("discrete", name, description))
+
+    def scene_start(self, name, description="", media="I"):
+        self.calls.append(("scene_start", name, description, media))
+
+    def scene_end(self, name):
+        self.calls.append(("scene_end", name))
 
 
 def _trial(rt_ms, response_type, lapse, period=1):
@@ -137,3 +152,117 @@ def test_thresholds():
 def test_period_counts():
     assert NUM_PERIODS["full"] == 4
     assert NUM_PERIODS["test"] == 2
+
+
+# ── iMotions marker emitter (Layer 4) ─────────────────────────────────────
+
+
+def test_pvt_emitter_default_is_noop():
+    em = PvtMarkerEmitter()
+    em.block_start("high")
+    em.period(1)
+    em.stim_onset(1, 1)
+    em.response(1, 287.0, "valid")
+    em.stim_offset()
+    em.block_end("high")
+    # Nothing raised; default client is NoOpMarkerClient.
+
+
+def test_pvt_emitter_block_pair():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.block_start("low")
+    em.block_end("low")
+    assert fake.calls == [
+        ("scene_start", "pvt_low_block", "", "I"),
+        ("scene_end", "pvt_low_block"),
+    ]
+
+
+def test_pvt_emitter_period_marker():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.period(4)
+    assert fake.calls == [("discrete", "pvt_period_4", "")]
+
+
+def test_pvt_emitter_stim_pair():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.stim_onset(42, 3)
+    em.stim_offset()
+    assert fake.calls == [
+        ("scene_start", "pvt_stim", "trial=42,period=3", "I"),
+        ("scene_end", "pvt_stim"),
+    ]
+
+
+def test_pvt_emitter_response_valid():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.response(7, 287.3, "valid")
+    assert fake.calls == [
+        ("discrete", "pvt_response", "rt=287.3,type=valid,trial=7"),
+    ]
+
+
+def test_pvt_emitter_response_lapse_and_anticipatory():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.response(8, 612.0, "lapse")
+    em.response(9, 80.0, "anticipatory")
+    assert fake.calls == [
+        ("discrete", "pvt_response", "rt=612.0,type=lapse,trial=8"),
+        ("discrete", "pvt_response", "rt=80.0,type=anticipatory,trial=9"),
+    ]
+
+
+def test_pvt_emitter_response_timeout_has_no_rt():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.response(10, None, "timeout")
+    assert fake.calls == [
+        ("discrete", "pvt_response", "rt=none,type=timeout,trial=10"),
+    ]
+
+
+def test_pvt_emitter_anticipatory_phase():
+    """Pre-stimulus presses carry a commission-error marker alongside the
+    anticipatory marker (PI decision, Jeff_questions_U2)."""
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.anticipatory("isi")
+    em.anticipatory("foreperiod")
+    assert fake.calls == [
+        ("discrete", "pvt_anticipatory", "phase=isi"),
+        ("discrete", "pvt_error_commission", "type=anticipatory,phase=isi"),
+        ("discrete", "pvt_anticipatory", "phase=foreperiod"),
+        ("discrete", "pvt_error_commission", "type=anticipatory,phase=foreperiod"),
+    ]
+
+
+def test_pvt_emitter_error_outcome_omission():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.error_outcome(3, "lapse", 612.0)
+    em.error_outcome(4, "timeout", None)
+    assert fake.calls == [
+        ("discrete", "pvt_error_omission", "type=lapse,rt=612.0,trial=3"),
+        ("discrete", "pvt_error_omission", "type=timeout,rt=none,trial=4"),
+    ]
+
+
+def test_pvt_emitter_error_outcome_commission():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.error_outcome(5, "anticipatory", 80.0)
+    assert fake.calls == [
+        ("discrete", "pvt_error_commission", "type=anticipatory,rt=80.0,trial=5"),
+    ]
+
+
+def test_pvt_emitter_error_outcome_valid_is_silent():
+    fake = _FakeMarkerClient()
+    em = PvtMarkerEmitter(fake)
+    em.error_outcome(6, "valid", 250.0)
+    assert fake.calls == []
