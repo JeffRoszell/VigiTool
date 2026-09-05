@@ -265,7 +265,7 @@ data/
       "trial_number": 1,
       "period": 1,
       "time_on_watch_s": 0.0,
-      "foreperiod_ms": 3500,
+      "foreperiod_ms": 4000,
       "reaction_time_ms": 267.4,
       "response_type": "valid",
       "lapse": false
