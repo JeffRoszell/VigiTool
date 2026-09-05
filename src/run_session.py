@@ -30,8 +30,12 @@ import pvt_task
 from imotions_api import EventReceivingAPI, LoggingMarkerClient, RemoteControlAPI
 from session_utils import (
     BREAK_MINUTES,
+    display_warning_body,
+    make_window,
     message_screen,
     recalibration_hold,
+    resolve_screen_index,
+    screen_count,
     timed_break,
 )
 
@@ -82,10 +86,14 @@ def run(
     test_mode: bool,
     *,
     break_minutes: float = BREAK_MINUTES,
+    display_number: int = 1,
+    fullscreen: bool = True,
 ) -> bool:
-    """Run a full session. Returns True if escaped early."""
+    """Run a full session. Returns True if escaped early.
+
+    `display_number` is 1-based, as the dialog presents it.
+    """
     from psychopy import core  # noqa: PLC0415
-    from psychopy import visual as _visual  # noqa: PLC0415
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     cfg = imotions_config.load()
@@ -109,16 +117,18 @@ def run(
         )
         remote_client.connect()
 
-    win = _visual.Window(
-        fullscr=True,
-        color="black",
-        units="norm",
-        allowGUI=False,
-    )
+    screen, fell_back = resolve_screen_index(display_number)
+    win = make_window(screen=screen, fullscr=fullscreen)
+    display_meta = {"screen": screen, "fullscreen": bool(fullscreen)}
 
     runners = {"cvt": cvt_task.run_full_session, "pvt": pvt_task.run_full_session}
 
     try:
+        if fell_back and not message_screen(
+            win, display_warning_body(display_number),
+        ):
+            return True
+
         if not _eeg_baseline_hold(win):
             return True
 
@@ -146,6 +156,7 @@ def run(
                 break_minutes=break_minutes,
                 marker_client=event_client,
                 eye_tracker=tracker_display,
+                display=display_meta,
                 **task_options.get(task, {}),
             )
             if escaped:
@@ -184,10 +195,15 @@ def run(
 def main() -> None:
     from psychopy import core, gui  # noqa: PLC0415
 
+    # A list renders as a dropdown and returns the chosen element, so there
+    # is nothing to parse and no typo to validate. 1-based: RAs think
+    # "Display 2".
     info: dict = {
         "Participant ID": "",
         "Task order": ["CVT → PVT", "PVT → CVT"],
         "CVT difficulty order": ["high → low", "low → high"],
+        "Task display": list(range(1, screen_count() + 1)),
+        "Fullscreen": True,
         "Test mode": False,
     }
     dlg = gui.DlgFromDict(
@@ -197,6 +213,8 @@ def main() -> None:
             "Participant ID",
             "Task order",
             "CVT difficulty order",
+            "Task display",
+            "Fullscreen",
             "Test mode",
         ],
         sortKeys=False,
@@ -212,7 +230,14 @@ def main() -> None:
 
     task_order = ("cvt", "pvt") if task_order_str.startswith("CVT") else ("pvt", "cvt")
 
-    run(participant_id, task_order, build_task_options(result), test_mode)
+    run(
+        participant_id,
+        task_order,
+        build_task_options(result),
+        test_mode,
+        display_number=int(result["Task display"]),
+        fullscreen=bool(result["Fullscreen"]),
+    )
 
 
 if __name__ == "__main__":

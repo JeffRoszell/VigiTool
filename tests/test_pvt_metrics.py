@@ -350,6 +350,8 @@ def test_schema_v2_is_self_describing(tmp_path):
     assert meta["feedback_duration_ms"] == 500
     assert meta["stimulus"]["diameter"] == 0.10
     assert meta["stimulus"]["units"] == "height"
+    # Windowed runs are not analysable; the flag lets analysis exclude them.
+    assert meta["display"] == {"screen": 0, "fullscreen": True}
 
 
 # ── Session wiring ─────────────────────────────────────────────────────────

@@ -229,6 +229,7 @@ def save_data(
     pre_stim_anticipatory: int,
     timestamp: str,
     eye_tracker: str | None = None,
+    display: dict | None = None,
     data_root: Path | None = None,
 ) -> Path:
     """Write the session output. Schema v2 — see REQUIREMENTS §4.3.
@@ -267,6 +268,9 @@ def save_data(
                 "diameter": STIM_CIRCLE.diameter,
                 "color": STIM_CIRCLE.fill_color,
             },
+            # Windowed runs can lose exclusive-fullscreen frame timing, so
+            # this is recorded to let analysis exclude them.
+            "display": display or {"screen": 0, "fullscreen": True},
             "is_practice": False,
             "test_mode": test_mode,
             "eye_tracker": eye_tracker,
@@ -529,6 +533,7 @@ def run_full_session(
     break_minutes: Optional[float] = None,
     marker_client: Any | None = None,
     eye_tracker: str | None = None,
+    display: Optional[dict] = None,
 ) -> bool:
     """Run a full PVT session: a single 10-minute block.
 
@@ -569,6 +574,7 @@ def run_full_session(
         participant_id, test_mode,
         trials, pre_stim_anticipatory, timestamp,
         eye_tracker=eye_tracker,
+        display=display,
     )
     if escaped:
         return True
@@ -581,17 +587,26 @@ def run_full_session(
 
 def main() -> None:
     from psychopy import core, gui  # noqa: PLC0415
-    from psychopy import visual as _visual  # noqa: PLC0415
+
+    from session_utils import (  # noqa: PLC0415
+        display_warning_body,
+        make_window,
+        message_screen,
+        resolve_screen_index,
+        screen_count,
+    )
 
     info: dict = {
         "Participant ID": "",
+        "Task display": list(range(1, screen_count() + 1)),
+        "Fullscreen": True,
         "Test mode": False,
     }
     # copyDict=True works around a bug in PsychoPy 2026.1.3 DlgFromDict.show()
     dlg = gui.DlgFromDict(
         info,
         title="PVT",
-        order=["Participant ID", "Test mode"],
+        order=["Participant ID", "Task display", "Fullscreen", "Test mode"],
         sortKeys=False,
         copyDict=True,
     )
@@ -603,16 +618,18 @@ def main() -> None:
     test_mode = bool(result["Test mode"])
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    win = _visual.Window(
-        fullscr=True,
-        color="black",
-        units="norm",
-        allowGUI=False,
-    )
+    screen, fell_back = resolve_screen_index(int(result["Task display"]))
+    fullscreen = bool(result["Fullscreen"])
+    win = make_window(screen=screen, fullscr=fullscreen)
 
     try:
+        if fell_back and not message_screen(win, display_warning_body(
+            int(result["Task display"]),
+        )):
+            return
         run_full_session(
             win, participant_id, test_mode=test_mode, timestamp=timestamp,
+            display={"screen": screen, "fullscreen": fullscreen},
         )
     finally:
         win.close()

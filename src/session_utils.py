@@ -1,4 +1,4 @@
-"""Shared session-level helpers (timed break, on-screen messages)."""
+"""Shared session-level helpers (window creation, breaks, on-screen messages)."""
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -8,6 +8,108 @@ if TYPE_CHECKING:
 
 
 BREAK_MINUTES = 5.0
+
+# ── Display selection ──────────────────────────────────────────────────────
+# Added Sept 2026. The task window was previously created with fullscr=True
+# and no screen argument, so it always claimed display 0 and captured the
+# cursor there. On the lab machine that meant the RA could not reach iMotions
+# on the second monitor, and the task had to be run with that monitor
+# physically disconnected — leaving the recording unmonitored for a whole
+# session.
+
+DEFAULT_SCREEN = 0
+DEFAULT_WINDOW_SIZE = (1280, 720)
+FALLBACK_SCREEN_COUNT = 2
+
+
+def screen_count() -> int:
+    """Number of displays PsychoPy can see, or a permissive fallback.
+
+    Detection goes through pyglet's canvas. If that is unavailable the
+    fallback assumes a second display may exist, so an RA who genuinely has
+    two monitors is not blocked by a failed probe.
+    """
+    try:
+        import pyglet  # noqa: PLC0415
+
+        return max(1, len(pyglet.canvas.get_display().get_screens()))
+    except Exception:  # noqa: BLE001 — a probe failure must never stop a session
+        return FALLBACK_SCREEN_COUNT
+
+
+def to_screen_index(display_number: int) -> int:
+    """Convert a 1-based dialog choice to PsychoPy's 0-based screen index.
+
+    The dialog is 1-based because RAs think in terms of "Display 2". Doing
+    the conversion once, here, keeps the off-by-one out of the call sites.
+    """
+    return max(0, int(display_number) - 1)
+
+
+def resolve_screen_index(
+    display_number: int, count: int | None = None,
+) -> tuple[int, bool]:
+    """Return (screen_index, fell_back).
+
+    Display indices come from the OS and reorder when a monitor is unplugged
+    or over remote desktop, so a stored choice can point at a display that is
+    no longer there. Depending on backend and version PsychoPy either falls
+    back silently or crashes; neither is acceptable mid-session, so an
+    out-of-range choice is clamped to the primary display and the caller is
+    told, so it can warn.
+    """
+    index = to_screen_index(display_number)
+    available = screen_count() if count is None else count
+    if index >= available:
+        return DEFAULT_SCREEN, True
+    return index, False
+
+
+def make_window(
+    *,
+    screen: int = DEFAULT_SCREEN,
+    fullscr: bool = True,
+    size: tuple[int, int] = DEFAULT_WINDOW_SIZE,
+    factory=None,
+):
+    """Single construction point for the task window.
+
+    All three entry points route through here so their window settings cannot
+    drift apart. `factory` is injectable so the argument mapping is testable
+    without a display.
+
+    Note `units="norm"` stays: norm units are anisotropic on a widescreen, but
+    every existing stimulus is laid out in them. The PVT target fixes its own
+    roundness by specifying "height" units on the stimulus instead.
+    """
+    if factory is None:
+        from psychopy import visual  # noqa: PLC0415
+
+        factory = visual.Window
+
+    kwargs = {
+        "color": "black",
+        "units": "norm",
+        "screen": int(screen),
+        "fullscr": bool(fullscr),
+        # A windowed run needs the cursor and window chrome; a fullscreen one
+        # must not show them over the stimulus.
+        "allowGUI": not fullscr,
+    }
+    if not fullscr:
+        kwargs["size"] = size
+    return factory(**kwargs)
+
+
+def display_warning_body(requested: int) -> str:
+    return (
+        "DISPLAY NOT FOUND\n\n"
+        f"Display {requested} was selected, but the system reports fewer\n"
+        "displays than that. The task is running on Display 1 instead.\n\n"
+        "Experimenter: check the monitor connection before seating the\n"
+        "participant, or press ESC to abort and relaunch.\n\n"
+        "Press SPACEBAR to continue on Display 1."
+    )
 
 
 def timed_break(
@@ -58,8 +160,10 @@ def recalibration_hold(
     """RA hold screen for eye-tracking recalibration after a break.
 
     Per the PI decision (June 2026, Jeff_questions_U2 Q10): the 5-minute
-    breaks between 24-minute blocks and between tasks require eye-tracking
-    recalibration because the participant may have shifted. The screen holds
+    breaks require eye-tracking recalibration because the participant may
+    have shifted. Originally "between 24-minute blocks and between tasks";
+    since Sept 2026 the PVT is a single 10-minute block, so the breaks are
+    between the two CVT blocks and between tasks — two holds per session. The screen holds
     until the RA confirms recalibration in iMotions; the interval is
     bracketed with recalibration_start/end markers so it can be excluded
     from analysis epochs.
