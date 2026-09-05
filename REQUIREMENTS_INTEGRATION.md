@@ -216,7 +216,9 @@ CVT:
   (PI decision June 2026)
 
 PVT:
-- `pvt_<difficulty>_block` — scene pair (per block)
+- `pvt_block` — scene pair (one per session; the PVT has a single block and the
+  label carries no difficulty. Superseded `pvt_high_block`/`pvt_low_block`,
+  Sept 2026)
 - `pvt_period_<n>` — discrete, on first trial of each new period
 - `pvt_stim` — scene pair (per trial; description `trial=<n>,period=<p>`)
 - `pvt_response` — discrete with `rt=<ms|none>,type=valid|lapse|anticipatory|timeout,trial=<n>`
