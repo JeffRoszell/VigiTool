@@ -10,6 +10,76 @@ Each release entry records the **PI protocol revision** the code targets.
 
 ## [Unreleased]
 
+Two tranches: the June 2026 PI answers to the workflow & study-design
+questions (`Jeff_questions_U2`), and the September 2026 PVT protocol change
+requested by the Co-PI after the first independent lab run.
+
+### PVT protocol change — Sept 2026 (Protocol: Inquisit manual)
+
+The Millisecond Inquisit Perceptual Vigilance Task (keyboard) manual is now
+the authoritative PVT specification. Tie-breaker rule: where the code and the
+manual disagree, or a parameter is ambiguous, the manual wins; where the
+manual is silent, the implemented value stands.
+
+#### Changed
+- **PVT is a single 10-minute block** (was two 24-minute blocks).
+- **PVT high/low difficulty removed.** Difficulty remains a CVT-only factor.
+- **Trial intervals** are drawn with replacement from the discrete
+  {1000…10000} ms set, replacing a continuous `random.uniform(1, 10)`.
+- **RT feedback 1.0 s → 0.5 s**, overriding a June 2026 decision under the
+  tie-breaker rule. Flagged in REQUIREMENTS §7 for confirmation.
+- **Periods** stay at four, now 2.5 minutes each. `period_seconds()` divides
+  as float — 10/4 is the first non-integer period length in this suite.
+- `run_full_session` arguments after `participant_id` are keyword-only, so a
+  stale positional call raises instead of sliding `test_mode` into the slot
+  `difficulty_order` used to occupy.
+- Session recalibration holds drop from three to two: the PVT no longer has
+  an internal break.
+- `run_session` builds per-task keyword options (`build_task_options`) rather
+  than passing a uniform argument list to both tasks.
+
+#### Fixed
+- **The PVT target rendered as an ellipse.** It inherited the window's `norm`
+  units, which are anisotropic on a widescreen. The stimulus now specifies
+  `height` units explicitly, at the manual's 10%-of-vertical-screen diameter.
+- **The task always claimed display 0**, capturing the cursor there. On the
+  lab machine this forced the RA to disconnect the second monitor and left an
+  iMotions recording unmonitored for a whole session.
+
+#### Added
+- **Display selection.** Launch dialogs gain a 1-based `Task display`
+  dropdown and a `Fullscreen` checkbox; `session_utils.make_window` is the
+  single window construction point for all three entry points. An
+  out-of-range choice warns and falls back to display 1.
+- 33 headless tests covering the spec constants, the discrete interval draw,
+  the circle geometry, schema v2, the keyword-only signatures, display
+  selection, and a guard pinning `cvt_task`'s identically-named constants.
+
+#### Removed
+- **BREAKING** — iMotions markers `pvt_high_block` and `pvt_low_block`,
+  replaced by a single `pvt_block`. Saved iMotions epoch definitions keyed on
+  the old labels will match nothing and yield *empty epochs* rather than an
+  error. Coordinate with Dr. Gupta before the next run.
+- **BREAKING** — PVT schema v2 drops `difficulty`, `isi_ms` and
+  `foreperiod_range_ms` from metadata, and the difficulty segment from the
+  filename (`pvt_<ts>.json`). Adds `schema_version`, `spec_source`, the full
+  parameter set and `display`. An absent `schema_version` means v1, which is
+  a **different protocol** and must not be pooled with v2 data.
+- `ISI_S` and `FOREPERIOD_RANGE` deleted rather than left unused, so a future
+  change cannot quietly reinstate the double-counted gap.
+
+#### Notes
+- KNOWN_ISSUES rows 5–7 are retracted: the legacy PVT's 10-minute,
+  no-difficulty, 1–10 s behaviour was correct. The implementation converges
+  on it by way of the manual; `legacy/` stays frozen.
+- A 10-minute block yields roughly 95 trials, so period-level lapse counts
+  are low-powered and descriptive. Accepted consequence of the manual.
+- **IRB:** the shorter PVT changes the stated participant time commitment
+  under IRB #0007078. Confirm with the PI whether a protocol modification
+  must be filed before the next run.
+
+### June 2026 tranche
+
 Incorporates PI answers to the workflow & study-design questions
 (`Jeff_questions_U2`, June 2026).
 
