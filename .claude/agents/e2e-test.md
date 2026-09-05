@@ -30,7 +30,7 @@ You run end-to-end regression tests for the CVT and PVT vigilance tasks in headl
 3. **Timing parameters**
    - High difficulty: 1000ms stimulus + 500ms ISI = 1500ms cycle
    - Low difficulty: 1000ms stimulus + 1500ms ISI = 2500ms cycle
-   - Block duration = 24 minutes (1,440,000 ms)
+   - Block duration = 24 minutes (1,440,000 ms) — CVT only; the PVT block is 10 minutes
 
 4. **Data output**
    - JSON file created in correct directory structure: `data/<participant_id>/`
@@ -39,9 +39,12 @@ You run end-to-end regression tests for the CVT and PVT vigilance tasks in headl
    - Practice runs flagged with `is_practice: true`
 
 ### PVT (Psychomotor Vigilance Task)
+Single 10-minute block, no difficulty conditions (Sept 2026 — see REQUIREMENTS §3.2).
+
 1. **Trial logic**
    - Response classification: valid (100-500ms), lapse (>500ms), anticipatory (<100ms)
-   - Foreperiod randomization within specified range
+   - Intervals drawn **with replacement from the discrete set** {1000…10000} ms —
+     assert every draw is a multiple of 1000 and within the set, not merely in range
    - Timeout handling
 
 2. **Performance metrics**
@@ -49,10 +52,21 @@ You run end-to-end regression tests for the CVT and PVT vigilance tasks in headl
    - Fastest/slowest 10% means correct
    - Reciprocal RT: mean of (1000/RT)
    - Lapse count and percentage
-   - Period-level breakdown (4 periods of 6 minutes)
+   - Period-level breakdown (4 periods of 2.5 minutes — note the non-integer
+     period length; assert `period_seconds("full") == 150.0` to catch integer
+     truncation)
 
 3. **Data output**
-   - Same directory structure and schema validation as CVT
+   - Same directory structure as CVT; schema is **v2** — no `difficulty`, no
+     `isi_ms`, filename `pvt_<timestamp>.json`
+   - `metadata.schema_version == 2` and `spec_source` names the Inquisit manual
+
+4. **Stimulus and display**
+   - The target circle is specified in `height` units so it renders round on any
+     aspect ratio — assert the spec constants, since geometry cannot be tested
+     headlessly
+   - Marker labels: a single `pvt_block` scene pair, never `pvt_high_block` or
+     `pvt_low_block`
 
 ## How to Run Tests
 
