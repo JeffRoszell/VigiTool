@@ -1,5 +1,10 @@
 # Prompt for Claude: Psychomotor Vigilance Task (PVT) Updates
 
+> **Status: implemented** on branch `feat/pvt-manual-alignment` (Sept 2026).
+> This is a historical change request, not a standing requirement. The
+> authoritative specification is `REQUIREMENTS.md` §3 and §6; open questions
+> live in `REQUIREMENTS.md` §7 and `KNOWN_ISSUES.md`.
+
 ## Background (Context for Claude)
 
 We need to update our `pvt_task.py` implementation in the UND Psychology Department
