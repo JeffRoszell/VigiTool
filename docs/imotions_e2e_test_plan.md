@@ -168,17 +168,23 @@ python src/run_session.py
 - Participant ID: `PILOT01`
 - Task order: CVT → PVT
 - CVT difficulty order: high → low
-- PVT difficulty order: high → low
+- Task display: `2` if a second monitor is connected, else `1`
+- Fullscreen: checked
 - Test mode: checked
+
+(There is no PVT difficulty field as of Sept 2026 — the PVT is a single block.)
 
 **Pass criteria**
 - [ ] EEG baseline hold screen appears and waits for SPACE
-- [ ] CVT runs (practice + 2 test-mode blocks with break) → 5-min inter-task break → PVT runs
+- [ ] CVT runs (practice + 2 test-mode blocks with break) → 5-min inter-task break → PVT runs (one block, no internal break)
+- [ ] With Task display `2`: iMotions stays clickable on display 1 **during** a block, and the recording can be watched live
 - [ ] iMotions timeline shows:
   - [ ] One `session_PILOT01_<ts>` scene wrapping everything
   - [ ] `session_break_start` / `session_break_end` around the inter-task break
   - [ ] All CVT and PVT markers from §3
-  - [ ] PVT markers: `pvt_high_block`/`pvt_low_block` scene pairs,
+  - [ ] PVT markers: a single `pvt_block` scene pair (**not**
+        `pvt_high_block`/`pvt_low_block` — renamed Sept 2026; any saved epoch
+        definition keyed on the old names will match nothing),
         `pvt_period_*`, `pvt_stim` scene pairs, `pvt_response`, `pvt_anticipatory`
         if you press too early
 - [ ] Two task JSONs written under `data/PILOT01/`

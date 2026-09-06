@@ -240,11 +240,11 @@ def test_pvt_block_full_marker_stream():
         assert client.connect() is True
         em = PvtMarkerEmitter(client)
 
-        em.block_start("low")
+        em.block_start()
         em.period(1)
 
         # ISI early press
-        em.anticipatory("isi")
+        em.anticipatory()
 
         # trial 1 — valid response (no error marker)
         em.stim_onset(1, 1)
@@ -253,7 +253,7 @@ def test_pvt_block_full_marker_stream():
         em.error_outcome(1, "valid", 287.0)
 
         # foreperiod early press before trial 2
-        em.anticipatory("foreperiod")
+        em.anticipatory()
 
         # trial 2 — lapse (error of omission)
         em.stim_onset(2, 1)
@@ -267,13 +267,13 @@ def test_pvt_block_full_marker_stream():
         em.response(3, None, "timeout")
         em.error_outcome(3, "timeout", None)
 
-        em.block_end("low")
+        em.block_end()
 
         expected = [
-            b"M;2;;;pvt_low_block;;N;I\r\n",
+            b"M;2;;;pvt_block;;N;I\r\n",
             b"M;2;;;pvt_period_1;;D;\r\n",
-            b"M;2;;;pvt_anticipatory;phase=isi;D;\r\n",
-            b"M;2;;;pvt_error_commission;type=anticipatory,phase=isi;D;\r\n",
+            b"M;2;;;pvt_anticipatory;phase=foreperiod;D;\r\n",
+            b"M;2;;;pvt_error_commission;type=anticipatory,phase=foreperiod;D;\r\n",
             b"M;2;;;pvt_stim;trial=1,period=1;N;I\r\n",
             b"M;2;;;pvt_stim;;E;\r\n",
             b"M;2;;;pvt_response;rt=287.0,type=valid,trial=1;D;\r\n",
@@ -287,7 +287,7 @@ def test_pvt_block_full_marker_stream():
             b"M;2;;;pvt_stim;;E;\r\n",
             b"M;2;;;pvt_response;rt=none,type=timeout,trial=3;D;\r\n",
             b"M;2;;;pvt_error_omission;type=timeout,rt=none,trial=3;D;\r\n",
-            b"M;2;;;pvt_low_block;;E;\r\n",
+            b"M;2;;;pvt_block;;E;\r\n",
         ]
         _wait_for_markers(received, len(expected))
         client.close()
@@ -328,8 +328,8 @@ def test_session_wrap_with_break_between_tasks():
         client.discrete("session_break_end")
 
         # PVT block (collapsed)
-        pvt.block_start("low")
-        pvt.block_end("low")
+        pvt.block_start()
+        pvt.block_end()
 
         client.scene_end(session_label)
 
@@ -339,8 +339,8 @@ def test_session_wrap_with_break_between_tasks():
             b"M;2;;;cvt_high_block;;E;\r\n",
             b"M;2;;;session_break_start;;D;\r\n",
             b"M;2;;;session_break_end;;D;\r\n",
-            b"M;2;;;pvt_low_block;;N;I\r\n",
-            b"M;2;;;pvt_low_block;;E;\r\n",
+            b"M;2;;;pvt_block;;N;I\r\n",
+            b"M;2;;;pvt_block;;E;\r\n",
             b"M;2;;;session_PILOT01_20260513_143000;;E;\r\n",
         ]
         _wait_for_markers(received, len(expected))

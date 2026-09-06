@@ -77,9 +77,12 @@ Rewrite CVT and PVT using PsychoPy's experiment framework.
 - Replace tkinter with PsychoPy `visual.Window`
 - Use `visual.TextStim` for RT counter display
 - Use `core.Clock` for precise RT measurement
-- Add difficulty selection (high/low) — currently missing
-- Fix duration to 24 minutes per protocol
-- Fix ISI to 500ms/1500ms per difficulty — not random 1-10s
+- ~~Add difficulty selection (high/low) — currently missing~~ **superseded Sept 2026**
+- ~~Fix duration to 24 minutes per protocol~~ **superseded Sept 2026**
+- ~~Fix ISI to 500ms/1500ms per difficulty — not random 1-10s~~ **superseded Sept 2026**
+  > These three items are superseded by the Inquisit manual: the PVT is a single
+  > 10-minute block with no difficulty conditions and discrete 1–10 s intervals.
+  > See KNOWN_ISSUES.md "Retracted — not defects" and REQUIREMENTS §3.2.
 - Implement proper anticipatory response handling without race conditions
 
 **Both Tasks**
@@ -122,7 +125,7 @@ Verify the migrated tasks match protocol requirements before lab use.
 **Timing Validation**
 - Measure actual stimulus duration and ISI with PsychoPy's frame-level logging
 - Confirm RT measurement accuracy against known input delays
-- Verify 24-minute block duration
+- Verify block duration — CVT 24 minutes, PVT 10 minutes (superseded Sept 2026)
 
 **Data Validation**
 - Compare trial counts, signal distribution, and period structure against requirements

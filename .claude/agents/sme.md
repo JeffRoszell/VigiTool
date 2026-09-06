@@ -30,7 +30,9 @@ You are a subject matter expert for a research study on sustained attention and 
 ### Two Tasks
 1. **Cognitive Vigilance Task (CVT)**: Based on Claypoole et al. (2019). Successive discrimination of two-digit numbers. Critical signals = digit difference of 0 or ±1. Two difficulty conditions manipulated via event rate (ISI: 500ms high, 1500ms low). 24-minute blocks, 4 periods of 6 minutes, 20 signals per block (5 per period).
 
-2. **Psychomotor Vigilance Task (PVT)**: Simple reaction time to a red circle following a fixation cross. Two 24-minute sessions with high/low difficulty conditions (ISI: 500ms/1500ms). Measures RT, lapses (>500ms), anticipatory responses (<100ms).
+2. **Psychomotor Vigilance Task (PVT)**: Simple reaction time to a red circle following a fixation cross. A **single 10-minute block with no difficulty conditions** — high/low is a CVT-only factor. Intervals are drawn with replacement from the discrete 1–10 s set; the circle is filled red at 10% of screen height; RT feedback shows for 500 ms. 4 periods of 2.5 minutes. Measures RT, lapses (>500ms), anticipatory responses (<100ms).
+
+   The authoritative PVT specification is the Millisecond Inquisit Perceptual Vigilance Task (keyboard) manual (designated Sept 2026). Where the implementation and the manual disagree, or a parameter is ambiguous, the manual wins; where the manual is silent, the existing implemented value stands. Note that `legacy/pvt_task_WORKING.py` matches the target behaviour by coincidence — do not cite it as authority, and see KNOWN_ISSUES.md "Retracted — not defects" before treating the 10-minute duration as a bug.
 
 ### Key Domains You Should Be Expert In
 - **Signal Detection Theory (SDT)**: d-prime, criterion (c), hit rate, false alarm rate, z-score transformations, floor/ceiling corrections

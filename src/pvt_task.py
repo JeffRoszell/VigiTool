@@ -6,7 +6,7 @@ import random
 import statistics
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, NamedTuple, Optional
 
 from imotions_api import NoOpMarkerClient
 
@@ -16,14 +16,69 @@ if TYPE_CHECKING:
 
 # ── Constants ──────────────────────────────────────────────────────────────
 
-ISI_S = {"high": 0.5, "low": 1.5}       # blank screen after response
-FOREPERIOD_RANGE = (1.0, 10.0)           # s — fixation to circle onset
-STIM_TIMEOUT = 30.0                      # s — max wait before auto-lapse
-BLOCK_MINUTES = {"full": 24, "test": 2}
-NUM_PERIODS = {"full": 4, "test": 2}
-VALID_RT_MIN_MS = 100.0                  # < this = anticipatory
-LAPSE_THRESHOLD_MS = 500.0              # > this = lapse
-FEEDBACK_DURATION = 1.0                  # s — how long RT is shown
+# The Millisecond Inquisit Perceptual Vigilance Task (keyboard) manual is the
+# authoritative specification for this task (designated Sept 2026). Where the
+# implementation and the manual disagree, the manual wins; where the manual is
+# silent, the implemented value stands and is marked below.
+SPEC_SOURCE = "Millisecond Inquisit Perceptual Vigilance Task (keyboard) manual"
+SCHEMA_VERSION = 2
+
+BLOCK_MINUTES = {"full": 10, "test": 2}  # manual: 600000 ms => 10 min
+NUM_PERIODS = {"full": 4, "test": 2}     # manual silent — 4 for CVT comparability
+
+# One interval per trial, drawn with replacement from the discrete 1-10 s set.
+# There is NO separate post-response ISI: the manual defines a single gap
+# between trials, and adding a blank-screen wait on top would double-count it.
+INTERVAL_CHOICES_MS = tuple(range(1000, 10001, 1000))
+
+FEEDBACK_DURATION = 0.5                  # s — manual: rtFeedbackDuration 500ms
+STIM_TIMEOUT = 30.0                      # s — manual silent, retained
+VALID_RT_MIN_MS = 100.0                  # < this = anticipatory; manual silent
+LAPSE_THRESHOLD_MS = 500.0               # > this = lapse; manual silent
+
+
+def sample_interval_ms(rng=random) -> int:
+    """One inter-trial interval, drawn with replacement from the discrete set.
+
+    `rng` is injectable so tests can seed it without touching global state.
+    """
+    return rng.choice(INTERVAL_CHOICES_MS)
+
+
+def sample_interval_s(rng=random) -> float:
+    return sample_interval_ms(rng) / 1000.0
+
+
+def period_seconds(mode: str) -> float:
+    """Length of one period, in seconds.
+
+    Float division on purpose: full mode is 10/4 = 2.5 min, the first
+    non-integer period length in this suite. Integer truncation here would
+    silently drop the tail of every period.
+    """
+    return BLOCK_MINUTES[mode] * 60.0 / NUM_PERIODS[mode]
+
+
+class CircleSpec(NamedTuple):
+    """Geometry of the PVT target, as specified by the manual."""
+
+    units: str
+    radius: float
+    fill_color: str
+    line_color: str
+
+    @property
+    def diameter(self) -> float:
+        return self.radius * 2.0
+
+
+# "height" units are isotropic, so the target renders as a true circle at any
+# aspect ratio. The window itself uses "norm" units, which are NOT isotropic on
+# a widescreen — inheriting them is what made this stimulus an ellipse.
+# Manual: diameter is 10% of the vertical screen.
+STIM_CIRCLE = CircleSpec(
+    units="height", radius=0.05, fill_color="red", line_color="red",
+)
 
 
 # ── iMotions marker labels ─────────────────────────────────────────────────
@@ -39,11 +94,18 @@ class PvtMarkerEmitter:
     def __init__(self, client: Any | None = None) -> None:
         self.client = client if client is not None else NoOpMarkerClient()
 
-    def block_start(self, difficulty: str) -> None:
-        self.client.scene_start(f"pvt_{difficulty}_block")
+    def block_start(self) -> None:
+        """Scene start for the block.
 
-    def block_end(self, difficulty: str) -> None:
-        self.client.scene_end(f"pvt_{difficulty}_block")
+        The PVT has a single block and no difficulty conditions, so the label
+        carries neither. Supersedes pvt_high_block / pvt_low_block (Sept 2026)
+        — iMotions epoch definitions keyed on the old labels will match
+        nothing rather than erroring, so this rename needs coordination.
+        """
+        self.client.scene_start("pvt_block")
+
+    def block_end(self) -> None:
+        self.client.scene_end("pvt_block")
 
     def period(self, period_num: int) -> None:
         self.client.discrete(f"pvt_period_{period_num}")
@@ -63,8 +125,11 @@ class PvtMarkerEmitter:
             f"rt={rt_str},type={response_type},trial={trial_num}",
         )
 
-    def anticipatory(self, phase: str) -> None:
-        """Press during ISI or foreperiod (no stimulus on screen yet).
+    def anticipatory(self, phase: str = "foreperiod") -> None:
+        """Press during the interval, before the stimulus appears.
+
+        `phase` is retained at its historical "foreperiod" value for marker
+        contract stability; the "isi" phase no longer occurs.
 
         Pre-stimulus presses are errors of commission (PI decision June 2026),
         so an error marker accompanies the existing anticipatory marker.
@@ -155,33 +220,57 @@ def compute_period_metrics(trials: list[dict], n_periods: int) -> list[dict]:
 
 # ── Data I/O ───────────────────────────────────────────────────────────────
 
+DATA_ROOT = Path("data")
+
 def save_data(
     participant_id: str,
-    difficulty: str,
     test_mode: bool,
     trials: list[dict],
     pre_stim_anticipatory: int,
     timestamp: str,
     eye_tracker: str | None = None,
+    display: dict | None = None,
+    data_root: Path | None = None,
 ) -> Path:
+    """Write the session output. Schema v2 — see REQUIREMENTS §4.3.
+
+    v2 drops `difficulty` and `isi_ms` entirely rather than nulling them: a
+    null key invites downstream code to keep a difficulty column and mis-join
+    PVT against CVT. An absent `schema_version` means v1, which is a
+    *different protocol* and must not be pooled with v2 data.
+
+    `data_root` exists so tests can write to a tmp directory.
+    """
     mode = "test" if test_mode else "full"
     suffix = "_test" if test_mode else ""
-    out_dir = Path("data") / participant_id
+    out_dir = (data_root or DATA_ROOT) / participant_id
     out_dir.mkdir(parents=True, exist_ok=True)
-    filename = out_dir / f"pvt_{difficulty}{suffix}_{timestamp}.json"
+    filename = out_dir / f"pvt{suffix}_{timestamp}.json"
 
     output = {
         "metadata": {
             "participant_id": participant_id,
             "task": "pvt",
-            "difficulty": difficulty,
             "timestamp": timestamp,
-            "isi_ms": int(ISI_S[difficulty] * 1000),
+            "schema_version": SCHEMA_VERSION,
+            "spec_source": SPEC_SOURCE,
             "block_duration_minutes": BLOCK_MINUTES[mode],
-            "foreperiod_range_ms": [
-                int(FOREPERIOD_RANGE[0] * 1000),
-                int(FOREPERIOD_RANGE[1] * 1000),
-            ],
+            "num_periods": NUM_PERIODS[mode],
+            "period_seconds": period_seconds(mode),
+            "interval_choices_ms": list(INTERVAL_CHOICES_MS),
+            "feedback_duration_ms": int(FEEDBACK_DURATION * 1000),
+            "stim_timeout_s": STIM_TIMEOUT,
+            "lapse_threshold_ms": LAPSE_THRESHOLD_MS,
+            "valid_rt_min_ms": VALID_RT_MIN_MS,
+            "stimulus": {
+                "shape": "circle",
+                "units": STIM_CIRCLE.units,
+                "diameter": STIM_CIRCLE.diameter,
+                "color": STIM_CIRCLE.fill_color,
+            },
+            # Windowed runs can lose exclusive-fullscreen frame timing, so
+            # this is recorded to let analysis exclude them.
+            "display": display or {"screen": 0, "fullscreen": True},
             "is_practice": False,
             "test_mode": test_mode,
             "eye_tracker": eye_tracker,
@@ -199,23 +288,37 @@ def save_data(
 
 # ── PsychoPy display helpers ───────────────────────────────────────────────
 
-def _instructions(
-    win: visual.Window,
-    difficulty: str,
-    test_mode: bool,
-    block_num: Optional[int] = None,
-) -> bool:
+def make_stimulus(win: visual.Window, factory=None):
+    """Build the PVT target from STIM_CIRCLE.
+
+    `units` is passed explicitly so the stimulus does not inherit the window's
+    anisotropic "norm" units — that inheritance is what rendered this circle
+    as an ellipse. `factory` is injectable so tests can assert the geometry
+    without a display; it must be resolved inside the body, since a default
+    argument would evaluate `visual` at import time and break headless runs.
+    """
+    if factory is None:
+        from psychopy import visual  # noqa: PLC0415
+
+        factory = visual.Circle
+    return factory(
+        win,
+        units=STIM_CIRCLE.units,
+        radius=STIM_CIRCLE.radius,
+        fillColor=STIM_CIRCLE.fill_color,
+        lineColor=STIM_CIRCLE.line_color,
+    )
+
+
+def _instructions(win: visual.Window, test_mode: bool) -> bool:
     """Returns False if ESC pressed instead of SPACE."""
     from psychopy import event, visual  # noqa: PLC0415
 
-    pace = "500 ms blank" if difficulty == "high" else "1500 ms blank"
     mins = BLOCK_MINUTES["test" if test_mode else "full"]
     mode_tag = " [TEST MODE]" if test_mode else ""
-    block_tag = f"Block {block_num} — " if block_num else ""
 
     body = (
         f"PSYCHOMOTOR VIGILANCE TASK{mode_tag}\n\n"
-        f"{block_tag}Difficulty: {difficulty.upper()}  ({pace} between trials)\n"
         f"Duration: {mins} minutes\n\n"
         "A fixation cross (+) will appear at screen centre.\n"
         "After a short wait, a RED CIRCLE will appear.\n\n"
@@ -281,7 +384,6 @@ def _results_screen(
 
 def run_task(
     win: visual.Window,
-    difficulty: str,
     block_clock: core.Clock,
     n_periods: int,
     block_s: float,
@@ -293,11 +395,10 @@ def run_task(
     if emitter is None:
         emitter = PvtMarkerEmitter()
 
-    isi_s = ISI_S[difficulty]
     period_s = block_s / n_periods
 
     fixation = visual.TextStim(win, text="+", height=0.1, color="white", bold=True)
-    circle = visual.Circle(win, radius=0.08, fillColor="red", lineColor="red")
+    circle = make_stimulus(win)
     feedback_obj = visual.TextStim(win, text="", height=0.08, pos=(0, -0.3), bold=True)
     too_early_obj = visual.TextStim(
         win, text="TOO EARLY", height=0.08, color="red", bold=True,
@@ -306,38 +407,14 @@ def run_task(
     trials: list[dict] = []
     trial_num = 1
     pre_stim_anticipatory = 0
-    first_trial = True
     prev_period: Optional[int] = None
 
     while block_clock.getTime() < block_s:
 
-        # ── ISI — blank screen ─────────────────────────────
-        if not first_trial:
-            win.flip()  # blank
-            isi_end = block_clock.getTime() + isi_s
-            too_early_until = 0.0
-
-            while block_clock.getTime() < isi_end:
-                if block_clock.getTime() >= block_s:
-                    break
-                t_now = block_clock.getTime()
-                for k in event.getKeys(["space", "escape"]):
-                    if k == "escape":
-                        return trials, pre_stim_anticipatory, True
-                    if k == "space":
-                        pre_stim_anticipatory += 1
-                        emitter.anticipatory("isi")
-                        too_early_until = t_now + 0.5
-                if t_now < too_early_until:
-                    too_early_obj.draw()
-                win.flip()
-
-        first_trial = False
-        if block_clock.getTime() >= block_s:
-            break
-
-        # ── Fixation foreperiod ────────────────────────────
-        foreperiod = random.uniform(*FOREPERIOD_RANGE)
+        # ── Fixation interval ──────────────────────────────
+        # One gap per trial, drawn from the discrete set. There is no
+        # separate blank-screen ISI before it — see INTERVAL_CHOICES_MS.
+        foreperiod = sample_interval_s()
         fp_end = block_clock.getTime() + foreperiod
         too_early_until = 0.0
 
@@ -350,7 +427,7 @@ def run_task(
                     return trials, pre_stim_anticipatory, True
                 if k == "space":
                     pre_stim_anticipatory += 1
-                    emitter.anticipatory("foreperiod")
+                    emitter.anticipatory()
                     too_early_until = t_now + 0.5
             fixation.draw()
             if t_now < too_early_until:
@@ -450,25 +527,29 @@ def run_task(
 def run_full_session(
     win: visual.Window,
     participant_id: str,
-    difficulty_order: tuple[str, str],
+    *,
     test_mode: bool,
     timestamp: str,
-    *,
     break_minutes: Optional[float] = None,
     marker_client: Any | None = None,
     eye_tracker: str | None = None,
+    display: Optional[dict] = None,
 ) -> bool:
-    """Run a full PVT session: block1 → break → block2.
+    """Run a full PVT session: a single 10-minute block.
+
+    There is no difficulty factor and therefore no second block, no
+    within-task break, and no within-task recalibration hold. `break_minutes`
+    is accepted and ignored so the session launcher can pass one uniform set
+    of options to both tasks.
+
+    Every parameter after `participant_id` is keyword-only: this signature
+    previously took `difficulty_order` in third position, and making the rest
+    keyword-only turns a stale positional call into a TypeError rather than a
+    silently mis-parameterised session.
 
     Returns True if escaped.
     """
     from psychopy import core  # noqa: PLC0415
-
-    from session_utils import (  # noqa: PLC0415
-        BREAK_MINUTES,
-        recalibration_hold,
-        timed_break,
-    )
 
     emitter = PvtMarkerEmitter(marker_client)
 
@@ -477,37 +558,28 @@ def run_full_session(
     block_s = BLOCK_MINUTES[mode] * 60.0
     block_clock = core.Clock()
 
-    for block_num, difficulty in enumerate(difficulty_order, start=1):
-        if not _instructions(win, difficulty, test_mode, block_num=block_num):
-            return True
+    if not _instructions(win, test_mode):
+        return True
 
-        block_clock.reset()
-        emitter.block_start(difficulty)
-        try:
-            trials, pre_stim_anticipatory, escaped = run_task(
-                win, difficulty, block_clock, n_periods, block_s,
-                emitter=emitter,
-            )
-        finally:
-            emitter.block_end(difficulty)
-
-        filename = save_data(
-            participant_id, difficulty, test_mode,
-            trials, pre_stim_anticipatory, timestamp,
-            eye_tracker=eye_tracker,
+    block_clock.reset()
+    emitter.block_start()
+    try:
+        trials, pre_stim_anticipatory, escaped = run_task(
+            win, block_clock, n_periods, block_s, emitter=emitter,
         )
-        if escaped:
-            return True
+    finally:
+        emitter.block_end()
 
-        _results_screen(win, trials, pre_stim_anticipatory, filename, n_periods)
+    filename = save_data(
+        participant_id, test_mode,
+        trials, pre_stim_anticipatory, timestamp,
+        eye_tracker=eye_tracker,
+        display=display,
+    )
+    if escaped:
+        return True
 
-        if block_num < len(difficulty_order):
-            mins = break_minutes if break_minutes is not None else BREAK_MINUTES
-            if not timed_break(win, minutes=mins, label="BREAK BETWEEN BLOCKS"):
-                return True
-            if not recalibration_hold(win, marker_client, eye_tracker=eye_tracker):
-                return True
-
+    _results_screen(win, trials, pre_stim_anticipatory, filename, n_periods)
     return False
 
 
@@ -515,18 +587,26 @@ def run_full_session(
 
 def main() -> None:
     from psychopy import core, gui  # noqa: PLC0415
-    from psychopy import visual as _visual  # noqa: PLC0415
+
+    from session_utils import (  # noqa: PLC0415
+        display_warning_body,
+        make_window,
+        message_screen,
+        resolve_screen_index,
+        screen_count,
+    )
 
     info: dict = {
         "Participant ID": "",
-        "Difficulty order": ["high → low", "low → high"],
+        "Task display": list(range(1, screen_count() + 1)),
+        "Fullscreen": True,
         "Test mode": False,
     }
     # copyDict=True works around a bug in PsychoPy 2026.1.3 DlgFromDict.show()
     dlg = gui.DlgFromDict(
         info,
         title="PVT",
-        order=["Participant ID", "Difficulty order", "Test mode"],
+        order=["Participant ID", "Task display", "Fullscreen", "Test mode"],
         sortKeys=False,
         copyDict=True,
     )
@@ -535,21 +615,22 @@ def main() -> None:
 
     result = dlg.dictionary
     participant_id = str(result["Participant ID"]).strip() or "unknown"
-    order_str = str(result["Difficulty order"])
     test_mode = bool(result["Test mode"])
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    difficulty_order = ("high", "low") if order_str.startswith("high") else ("low", "high")
-
-    win = _visual.Window(
-        fullscr=True,
-        color="black",
-        units="norm",
-        allowGUI=False,
-    )
+    screen, fell_back = resolve_screen_index(int(result["Task display"]))
+    fullscreen = bool(result["Fullscreen"])
+    win = make_window(screen=screen, fullscr=fullscreen)
 
     try:
-        run_full_session(win, participant_id, difficulty_order, test_mode, timestamp)
+        if fell_back and not message_screen(win, display_warning_body(
+            int(result["Task display"]),
+        )):
+            return
+        run_full_session(
+            win, participant_id, test_mode=test_mode, timestamp=timestamp,
+            display={"screen": screen, "fullscreen": fullscreen},
+        )
     finally:
         win.close()
         core.quit()

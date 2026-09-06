@@ -38,7 +38,9 @@ PsychDept/
 Based on Claypoole et al. (2019). Two-digit numbers in screen quadrants; press spacebar when digit difference is 0 or ±1. Two difficulty conditions via event rate: high (500ms ISI, ~40/min) and low (1500ms ISI, ~24/min). 24-minute blocks, 4 periods, 20 signals per block. Measures d', criterion, hit rate, FA rate, vigilance decrement.
 
 ### PVT (Psychomotor Vigilance Task)
-Fixation cross → red circle; press spacebar as fast as possible. Two 24-minute sessions with high/low difficulty (500ms/1500ms ISI). Measures RT, lapses (>500ms), anticipatory responses (<100ms).
+Fixation cross → red circle; press spacebar as fast as possible. Single 10-minute block, **no difficulty conditions** (high/low is CVT-only). Intervals drawn with replacement from the discrete {1000…10000} ms set — there is no separate blank-screen ISI. Filled red circle at 10% of screen height, RT feedback 500ms, 4 periods of 2.5 minutes. Measures RT, lapses (>500ms), anticipatory responses (<100ms).
+
+Specified by the Millisecond Inquisit Perceptual Vigilance Task (keyboard) manual, authoritative as of September 2026: where the implementation and the manual disagree, the manual wins; where the manual is silent, the existing value stands.
 
 ## Development Commands
 
@@ -70,12 +72,15 @@ Configured in `.claude/settings.json`:
 
 ## Data Output
 
-Participant data saves to `data/<participant_id>/` with format `<task>_<difficulty>_<YYYYMMDD_HHMMSS>.json`. See REQUIREMENTS.md for full JSON schema.
+Participant data saves to `data/<participant_id>/` as `cvt_<difficulty>_<YYYYMMDD_HHMMSS>.json` and `pvt_<YYYYMMDD_HHMMSS>.json` — the PVT name carries no difficulty. PVT output is **schema v2**: no `difficulty` or `isi_ms`, plus `schema_version`, `spec_source` and the full parameter set so files are self-describing. An absent `schema_version` means v1, which is a *different protocol* and must not be pooled with v2 data. See REQUIREMENTS.md for the full JSON schema.
 
 ## Key Technical Notes
 
 - UI and stimulus presentation use PsychoPy (`visual.Window`, `visual.TextStim`, `event`, `core.Clock`)
 - SDT metrics use correct Abramowitz & Stegun z-score approximation
 - ESC key triggers emergency exit with data save
-- Task timing: ISI controls event rate (500ms = high difficulty, 1500ms = low difficulty), stimulus duration is 1000ms for CVT
+- CVT timing: ISI controls event rate (500ms = high difficulty, 1500ms = low difficulty), stimulus duration is 1000ms
+- PVT timing: one interval per trial, drawn with replacement from {1000…10000} ms. Do not add a post-response ISI on top of it — the manual defines a single gap, and summing the two would silently double-count it
+- The PVT target must be built in `height` units, not the window's `norm` units: norm units are anisotropic on a widescreen, which is what made the circle render as an ellipse
+- `cvt_task` and `pvt_task` both define `ISI_S`/`BLOCK_MINUTES`/`NUM_PERIODS`-style constants with the same names but different values. Both now hold `NUM_PERIODS["full"] == 4` while the periods are 6 min and 2.5 min respectively, so cross-contamination produces a duration error no count assertion can catch
 - iMotions integration implemented: TCP markers on port 8089 (Event Receiving API), fail-soft, async sender; Smarteye-only eye tracking (no Tobii); recalibration hold after every 5-min break

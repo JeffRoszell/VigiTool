@@ -20,13 +20,14 @@
 
 ### 1.2 Participant Entry (GUI Dialog at Launch)
 - **Participant ID**: free-text field — no forced format (per U3 protocol)
-- **Difficulty order**: dropdown — `high → low` or `low → high` (counterbalancing managed by RAs externally)
+- **CVT difficulty order**: dropdown — `high → low` or `low → high` (counterbalancing managed by RAs externally). The PVT has no difficulty conditions (see §3).
+- **Task display**: dropdown — which physical monitor the task runs on, 1-based (see §6)
 - **Task order** (session launcher only): dropdown — `CVT → PVT` or `PVT → CVT`
 - **No additional metadata** is collected in the application. Age group, session number, condition assignment, and experimenter initials are recorded on a paper questionnaire (per U3 protocol).
 
 ### 1.3 Data Output
 - Structured directory: `data/<participant_id>/`
-- File naming: `<task>_<difficulty>_<YYYYMMDD_HHMMSS>.json`
+- File naming: `cvt_<difficulty>_<YYYYMMDD_HHMMSS>.json`, `pvt_<YYYYMMDD_HHMMSS>.json`
 - JSON format with metadata, performance summary, and trial-level data
 - Data saved relative to script location (configurable in future)
 - Auto-save on completion, emergency save on ESC
@@ -108,19 +109,23 @@
 
 ### 3.1 Task Design (per IRB Protocol)
 - **Fixation**: Fixation cross (+) displayed at screen center
-- **Stimulus**: Red circle appears at screen center (replacing or near fixation cross)
+- **Stimulus**: Filled red circle at screen center, replacing the fixation cross. Diameter is **10% of the vertical screen** (`units="height"`, radius 0.05) — the stimulus is sized in height units, not the window's `norm` units, so that it renders as a true circle on any aspect ratio
 - **Response**: Press SPACEBAR as quickly as possible when red circle appears
 - **This is a simple reaction time task** — every stimulus requires a response
 
 ### 3.2 Timing
+
+Per the Millisecond Inquisit Perceptual Vigilance Task (keyboard) manual, designated
+the authoritative PVT specification in September 2026.
+
 - **Fixation cross displayed**: continuously between stimuli
 - **Stimulus (red circle)**: displayed until participant responds (or timeout)
-- **Blank screen ISI**:
-  - High difficulty: 500 ms (between response and next fixation cross)
-  - Low difficulty: 1500 ms (between response and next fixation cross)
-- **Foreperiod** (fixation cross to red circle onset): randomized within a range — TBD, suggest 1–10 seconds (standard PVT range), **confirm with Dr. Poltavski**
-- **Block duration**: 24 minutes per difficulty condition
-- **Periods**: 4 periods of 6 minutes each
+- **Interval** (fixation cross onset to red circle onset): drawn randomly **with replacement** from the discrete set {1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000} ms
+- **No separate blank-screen ISI.** The manual defines a single interval between trials; the interval above *is* that entire gap. There is no additional post-response wait, and adding one would double-count the interval
+- **Block duration**: 10 minutes (manual: "recommended minimum time is 600000ms")
+- **Blocks**: one. The PVT has **no high/low difficulty conditions** — high/low remains a CVT-only factor
+- **Periods**: 4 periods of 2.5 minutes each (see §3.5)
+- **RT feedback**: displayed for 500 ms (manual `rtFeedbackDuration`)
 
 ### 3.3 Response Classification
 - **Valid response**: RT between 100 ms and 500 ms
@@ -141,7 +146,8 @@
 - **Slowest 10% mean RT**
 - **Reciprocal RT**: mean of (1000/RT) for valid responses
 - **Lapses**: count and percentage (RT > 500 ms)
-- **Period-level breakdown**: metrics per 6-minute period for time-on-task analysis
+- **Period-level breakdown**: metrics per 2.5-minute period for time-on-task analysis. Four periods are used (rather than two 5-minute periods) so that the vigilance decrement is described by a curve rather than a single difference score, and so period indices remain comparable with the CVT
+- **Statistical note**: a 10-minute block yields roughly 95 trials (~24 per period), so period-level lapse counts are low-powered and descriptive. Block-level lapse rate is the primary metric. This reduced power is an accepted consequence of following the manual, not a defect
 
 ### 3.6 Feedback During Task
 - Display RT in milliseconds after each valid response
@@ -163,8 +169,7 @@ data/
 └── <participant_id>/
     ├── cvt_high_20260316_140000.json
     ├── cvt_low_20260316_143000.json
-    ├── pvt_high_20260316_150000.json
-    ├── pvt_low_20260316_153000.json
+    ├── pvt_20260316_150000.json
     └── (practice files if saved)
 ```
 
@@ -221,11 +226,19 @@ data/
   "metadata": {
     "participant_id": "P001",
     "task": "pvt",
-    "difficulty": "high",
     "timestamp": "20260316_150000",
-    "isi_ms": 500,
-    "block_duration_minutes": 24,
-    "foreperiod_range_ms": [1000, 10000],
+    "schema_version": 2,
+    "spec_source": "Millisecond Inquisit Perceptual Vigilance Task (keyboard) manual",
+    "block_duration_minutes": 10,
+    "num_periods": 4,
+    "period_seconds": 150.0,
+    "interval_choices_ms": [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000, 9000, 10000],
+    "feedback_duration_ms": 500,
+    "stim_timeout_s": 30.0,
+    "lapse_threshold_ms": 500.0,
+    "valid_rt_min_ms": 100.0,
+    "stimulus": {"shape": "circle", "units": "height", "diameter": 0.10, "color": "red"},
+    "display": {"screen": 0, "fullscreen": true},
     "is_practice": false,
     "test_mode": false
   },
@@ -252,7 +265,7 @@ data/
       "trial_number": 1,
       "period": 1,
       "time_on_watch_s": 0.0,
-      "foreperiod_ms": 3500,
+      "foreperiod_ms": 4000,
       "reaction_time_ms": 267.4,
       "response_type": "valid",
       "lapse": false
@@ -264,17 +277,47 @@ data/
 ---
 
 ## 5. Between-Block and Between-Task Transitions
-- **Between difficulty blocks within a task**: enforced timed 5-minute break with on-screen countdown (per U3 protocol). ESC aborts.
+- **Between difficulty blocks within a task**: enforced timed 5-minute break with on-screen countdown (per U3 protocol). ESC aborts. Applies to the **CVT only** — the PVT is a single block and has no within-task break, and therefore no within-task recalibration hold.
 - **Between tasks (CVT → PVT or PVT → CVT)**: enforced timed 5-minute break with on-screen countdown when launched via `run_session.py`.
 - Per-block results screen is shown after each block; advances on SPACEBAR.
 - **EEG baseline** is recorded once at the start of the session, before the first task. The session launcher displays an EEG-baseline hold screen for the experimenter to confirm before continuing.
 
 ---
 
-## 6. Open Items (Require Confirmation with Dr. Poltavski)
-- [ ] PVT foreperiod range: Is 1–10 seconds correct, or a different range?
-- [ ] PVT stimulus: Is the red circle a filled circle? What approximate size?
-- [ ] Should the fixation cross remain visible during the foreperiod, or is there a blank interval?
+## 6. Display Configuration
+
+Added September 2026 after the first independent lab run, in which the task had to be
+run with the second monitor physically disconnected because the fullscreen window
+captured the cursor. The iMotions recording consequently ran unmonitored for the whole
+session.
+
+- **Task display**: the launch dialog offers a **1-based** display selection (RAs think
+  "Display 2"), converted once at the dialog boundary to PsychoPy's 0-based `screen`
+  index. Default is display 1.
+- **Goal state**: the task runs fullscreen on the participant monitor while the RA
+  retains a usable cursor on the operator monitor to monitor the iMotions recording
+  live.
+- **Fullscreen**: on by default. A windowed option is provided as an escape hatch when
+  displays are mirrored or the index is wrong.
+- **Pre-flight**: if the requested display index exceeds the detected screen count, the
+  app warns on screen and falls back to display 1 rather than crashing or silently
+  landing on the wrong monitor. Display indices come from the OS and can reorder when a
+  monitor is unplugged or over remote desktop, so the index is confirmed before the
+  participant is seated.
+- **Analysability**: `screen` and `fullscreen` are recorded in the output metadata.
+  Windowed mode can lose exclusive-fullscreen vsync and gain frame-timing jitter, so
+  windowed runs are for monitoring and debugging only and are **not analysable**; the
+  recorded flag lets analysis exclude them.
+
+---
+
+## 7. Open Items (Require Confirmation with Dr. Poltavski)
+- [x] ~~PVT foreperiod range~~ — resolved Sept 2026: discrete 1–10 s draw per the Inquisit manual
+- [x] ~~PVT stimulus size/fill~~ — resolved Sept 2026: filled red circle, diameter 10% of screen height, per the manual
+- [x] ~~Fixation cross visibility during the foreperiod~~ — resolved: cross remains visible, replaced by the circle at onset
+- [ ] PVT RT feedback duration: the manual specifies 500 ms; a June 2026 decision set 1 s. Manual applied under the tie-breaker rule — **confirm this was not a deliberate deviation**
+- [ ] PVT period structure: the manual is silent. 4 × 2.5 min adopted provisionally for comparability with the CVT — **confirm with Dr. Gupta**
+- [ ] Session duration under IRB #0007078: the PVT drops from ~48 min (two blocks plus break) to 10 min, changing the stated participant time commitment — **confirm whether a protocol modification must be filed**
 - [ ] Event marker integration timeline and hardware specifics for B-Alert, Tobii, Smarteye
 - [ ] Any specific counterbalancing scheme to encode (e.g., ABBA, Latin square)?
-- [ ] Should the two difficulty blocks within a task always run in a specific order, or is order also counterbalanced?
+- [ ] Should the two CVT difficulty blocks always run in a specific order, or is order also counterbalanced?

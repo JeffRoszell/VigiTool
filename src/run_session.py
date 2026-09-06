@@ -8,6 +8,9 @@ EEG baseline is recorded once at the very start of the session (per IRB). A
 hold screen prompts the experimenter to confirm the baseline is captured
 before the first task begins.
 
+The PVT has no difficulty factor (Sept 2026), so the two tasks no longer take
+the same arguments; per-task keyword options are built by build_task_options.
+
 iMotions integration (Phase 2): when enabled, opens one continuous Event
 Receiving API connection at the start of the session and emits markers
 across CVT, PVT, and the break (per PI decision: one continuous recording).
@@ -27,8 +30,12 @@ import pvt_task
 from imotions_api import EventReceivingAPI, LoggingMarkerClient, RemoteControlAPI
 from session_utils import (
     BREAK_MINUTES,
+    display_warning_body,
+    make_window,
     message_screen,
     recalibration_hold,
+    resolve_screen_index,
+    screen_count,
     timed_break,
 )
 
@@ -49,17 +56,44 @@ def _eeg_baseline_hold(win: visual.Window) -> bool:
     return message_screen(win, body)
 
 
+def parse_difficulty_order(label: str) -> tuple[str, str]:
+    """Map a dialog label onto a difficulty pair."""
+    return ("high", "low") if str(label).startswith("high") else ("low", "high")
+
+
+def build_task_options(dialog: dict) -> dict[str, dict]:
+    """Map raw dialog fields onto per-task keyword arguments.
+
+    The tasks no longer take a uniform argument list: the CVT has a
+    high/low difficulty factor and a practice block, the PVT has neither.
+    Keeping that divergence in a table here — rather than branching on the
+    task name inside the dispatch loop — means the loop contains no protocol
+    knowledge, and adding or removing a per-task factor is a one-line edit.
+    """
+    return {
+        "cvt": {
+            "difficulty_order": parse_difficulty_order(dialog["CVT difficulty order"]),
+            "skip_practice": False,
+        },
+        "pvt": {},
+    }
+
+
 def run(
     participant_id: str,
     task_order: tuple[str, str],
-    difficulty_orders: dict[str, tuple[str, str]],
+    task_options: dict[str, dict],
     test_mode: bool,
     *,
     break_minutes: float = BREAK_MINUTES,
+    display_number: int = 1,
+    fullscreen: bool = True,
 ) -> bool:
-    """Run a full session. Returns True if escaped early."""
+    """Run a full session. Returns True if escaped early.
+
+    `display_number` is 1-based, as the dialog presents it.
+    """
     from psychopy import core  # noqa: PLC0415
-    from psychopy import visual as _visual  # noqa: PLC0415
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     cfg = imotions_config.load()
@@ -83,16 +117,18 @@ def run(
         )
         remote_client.connect()
 
-    win = _visual.Window(
-        fullscr=True,
-        color="black",
-        units="norm",
-        allowGUI=False,
-    )
+    screen, fell_back = resolve_screen_index(display_number)
+    win = make_window(screen=screen, fullscr=fullscreen)
+    display_meta = {"screen": screen, "fullscreen": bool(fullscreen)}
 
     runners = {"cvt": cvt_task.run_full_session, "pvt": pvt_task.run_full_session}
 
     try:
+        if fell_back and not message_screen(
+            win, display_warning_body(display_number),
+        ):
+            return True
+
         if not _eeg_baseline_hold(win):
             return True
 
@@ -109,20 +145,19 @@ def run(
 
         tracker_display = cfg.eye_tracker_display
         for i, task in enumerate(task_order):
-            kwargs = {
-                "break_minutes": break_minutes,
-                "marker_client": event_client,
-                "eye_tracker": tracker_display,
-            }
-            if task == "cvt":
-                kwargs["skip_practice"] = False
+            # Everything after participant_id goes by keyword. The PVT's
+            # difficulty_order slot was removed in Sept 2026, and passing
+            # positionally would silently slide test_mode into its place.
             escaped = runners[task](
                 win,
                 participant_id,
-                difficulty_orders[task],
-                test_mode,
-                timestamp,
-                **kwargs,
+                test_mode=test_mode,
+                timestamp=timestamp,
+                break_minutes=break_minutes,
+                marker_client=event_client,
+                eye_tracker=tracker_display,
+                display=display_meta,
+                **task_options.get(task, {}),
             )
             if escaped:
                 return True
@@ -160,11 +195,15 @@ def run(
 def main() -> None:
     from psychopy import core, gui  # noqa: PLC0415
 
+    # A list renders as a dropdown and returns the chosen element, so there
+    # is nothing to parse and no typo to validate. 1-based: RAs think
+    # "Display 2".
     info: dict = {
         "Participant ID": "",
         "Task order": ["CVT → PVT", "PVT → CVT"],
         "CVT difficulty order": ["high → low", "low → high"],
-        "PVT difficulty order": ["high → low", "low → high"],
+        "Task display": list(range(1, screen_count() + 1)),
+        "Fullscreen": True,
         "Test mode": False,
     }
     dlg = gui.DlgFromDict(
@@ -174,7 +213,8 @@ def main() -> None:
             "Participant ID",
             "Task order",
             "CVT difficulty order",
-            "PVT difficulty order",
+            "Task display",
+            "Fullscreen",
             "Test mode",
         ],
         sortKeys=False,
@@ -190,16 +230,14 @@ def main() -> None:
 
     task_order = ("cvt", "pvt") if task_order_str.startswith("CVT") else ("pvt", "cvt")
 
-    def _diff(label: str) -> tuple[str, str]:
-        s = str(result[label])
-        return ("high", "low") if s.startswith("high") else ("low", "high")
-
-    difficulty_orders = {
-        "cvt": _diff("CVT difficulty order"),
-        "pvt": _diff("PVT difficulty order"),
-    }
-
-    run(participant_id, task_order, difficulty_orders, test_mode)
+    run(
+        participant_id,
+        task_order,
+        build_task_options(result),
+        test_mode,
+        display_number=int(result["Task display"]),
+        fullscreen=bool(result["Fullscreen"]),
+    )
 
 
 if __name__ == "__main__":

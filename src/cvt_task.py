@@ -678,11 +678,20 @@ def run_full_session(
 
 def main() -> None:
     from psychopy import core, gui  # noqa: PLC0415
-    from psychopy import visual as _visual  # noqa: PLC0415
+
+    from session_utils import (  # noqa: PLC0415
+        display_warning_body,
+        make_window,
+        message_screen,
+        resolve_screen_index,
+        screen_count,
+    )
 
     info: dict = {
         "Participant ID": "",
         "Difficulty order": ["high → low", "low → high"],
+        "Task display": list(range(1, screen_count() + 1)),
+        "Fullscreen": True,
         "Test mode": False,
     }
     # copyDict=True works around a bug in PsychoPy 2026.1.3 DlgFromDict.show()
@@ -691,7 +700,13 @@ def main() -> None:
     dlg = gui.DlgFromDict(
         info,
         title="CVT",
-        order=["Participant ID", "Difficulty order", "Test mode"],
+        order=[
+            "Participant ID",
+            "Difficulty order",
+            "Task display",
+            "Fullscreen",
+            "Test mode",
+        ],
         sortKeys=False,
         copyDict=True,
     )
@@ -706,14 +721,14 @@ def main() -> None:
 
     difficulty_order = ("high", "low") if order_str.startswith("high") else ("low", "high")
 
-    win = _visual.Window(
-        fullscr=True,
-        color="black",
-        units="norm",
-        allowGUI=False,
-    )
+    screen, fell_back = resolve_screen_index(int(result["Task display"]))
+    win = make_window(screen=screen, fullscr=bool(result["Fullscreen"]))
 
     try:
+        if fell_back and not message_screen(win, display_warning_body(
+            int(result["Task display"]),
+        )):
+            return
         run_full_session(win, participant_id, difficulty_order, test_mode, timestamp)
     finally:
         win.close()
