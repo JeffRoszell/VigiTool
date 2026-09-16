@@ -277,6 +277,7 @@ def save_data(
     trials: list[dict],
     timestamp: str,
     eye_tracker: str | None = None,
+    display: dict | None = None,
 ) -> Path:
     mode = "test" if test_mode else "full"
     suffix = "_test" if test_mode else ""
@@ -294,6 +295,9 @@ def save_data(
             "isi_ms": int(ISI_S[difficulty] * 1000),
             "block_duration_minutes": BLOCK_MINUTES[mode],
             "total_signals": SIGNALS_PER_PERIOD * NUM_PERIODS[mode],
+            # Display mode changes frame timing, so it is recorded to let
+            # analysis keep modes apart. None for runs that did not pass it.
+            "display": display,
             "is_practice": False,
             "test_mode": test_mode,
             "eye_tracker": eye_tracker,
@@ -620,6 +624,7 @@ def run_full_session(
     break_minutes: Optional[float] = None,
     marker_client: Any | None = None,
     eye_tracker: str | None = None,
+    display: Optional[dict] = None,
 ) -> bool:
     """Run a full CVT session: practice → block1 → break → block2.
 
@@ -657,7 +662,7 @@ def run_full_session(
 
         filename = save_data(
             participant_id, difficulty, test_mode, trials, timestamp,
-            eye_tracker=eye_tracker,
+            eye_tracker=eye_tracker, display=display,
         )
         if escaped:
             return True
@@ -680,10 +685,11 @@ def main() -> None:
     from psychopy import core, gui  # noqa: PLC0415
 
     from session_utils import (  # noqa: PLC0415
+        DISPLAY_MODE_LABELS,
+        display_mismatch_body,
         display_warning_body,
-        make_window,
         message_screen,
-        resolve_screen_index,
+        open_task_window,
         screen_count,
     )
 
@@ -691,7 +697,7 @@ def main() -> None:
         "Participant ID": "",
         "Difficulty order": ["high → low", "low → high"],
         "Task display": list(range(1, screen_count() + 1)),
-        "Fullscreen": True,
+        "Display mode": list(DISPLAY_MODE_LABELS),
         "Test mode": False,
     }
     # copyDict=True works around a bug in PsychoPy 2026.1.3 DlgFromDict.show()
@@ -704,7 +710,7 @@ def main() -> None:
             "Participant ID",
             "Difficulty order",
             "Task display",
-            "Fullscreen",
+            "Display mode",
             "Test mode",
         ],
         sortKeys=False,
@@ -721,15 +727,23 @@ def main() -> None:
 
     difficulty_order = ("high", "low") if order_str.startswith("high") else ("low", "high")
 
-    screen, fell_back = resolve_screen_index(int(result["Task display"]))
-    win = make_window(screen=screen, fullscr=bool(result["Fullscreen"]))
+    win, display_meta, fell_back, display_issues = open_task_window(
+        int(result["Task display"]), str(result["Display mode"]),
+    )
 
     try:
         if fell_back and not message_screen(win, display_warning_body(
             int(result["Task display"]),
         )):
             return
-        run_full_session(win, participant_id, difficulty_order, test_mode, timestamp)
+        if display_issues and not message_screen(
+            win, display_mismatch_body(display_issues),
+        ):
+            return
+        run_full_session(
+            win, participant_id, difficulty_order, test_mode, timestamp,
+            display=display_meta,
+        )
     finally:
         win.close()
         core.quit()

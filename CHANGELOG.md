@@ -10,6 +10,37 @@ Each release entry records the **PI protocol revision** the code targets.
 
 ## [Unreleased]
 
+### Display modes — Sept 2026
+
+Second lab run: with the display selection fixed, the task and iMotions ran
+together, but iMotions screen recording (and the Windows Snipping Tool)
+could not capture the task in fullscreen. A fullscreen-sized OpenGL window is
+typically handed straight to the display, bypassing the desktop compositor
+that screen capture reads from.
+
+#### Added
+- **Display mode** dropdown (Fullscreen / Borderless / Windowed) replaces the
+  `Fullscreen` checkbox in all three launch dialogs. Fullscreen stays the
+  default until Borderless passes the bench check on the lab machine.
+- **Borderless mode**: an undecorated, cursorless, non-fullscreen window
+  sized to the chosen screen and trimmed by 1 px (`BORDERLESS_TRIM_PX`), so it
+  stays composited and capturable. Compositing may add up to one frame of
+  display latency per trial — do not mix modes across participants.
+- **DISPLAY SIZE MISMATCH** hold screen when Windows display scaling is above
+  100%, or the window's size or position does not match the screen.
+- `metadata.display` now records `mode`, `requested_mode`, screen and window
+  geometry, panel resolution, trim, measured refresh rate and any mismatch.
+  `screen` and `fullscreen` are unchanged, so PVT output stays schema v2.
+- CVT output records `metadata.display` too (previously absent).
+- `tools/display_check.py`: bench check that runs each mode, reports geometry
+  and frame timing, and gives a window of time to test screen capture.
+
+#### Fixed
+- **Full sessions crashed on reaching the CVT.** `run_session` passed
+  `display=` to `cvt_task.run_full_session`, which did not accept it, raising
+  `TypeError`. A regression test now binds the launcher's call against both
+  task runners.
+
 Two tranches: the June 2026 PI answers to the workflow & study-design
 questions (`Jeff_questions_U2`), and the September 2026 PVT protocol change
 requested by the Co-PI after the first independent lab run.

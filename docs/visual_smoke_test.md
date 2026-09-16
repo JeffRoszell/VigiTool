@@ -25,7 +25,7 @@ cd <repo> && python src/run_session.py
 ```
 
 In the dialog: Participant ID `SMOKE01`, Task order `CVT → PVT`, CVT
-difficulty order `high → low`, Task display `1`, Fullscreen checked,
+difficulty order `high → low`, Task display `1`, Display mode `Fullscreen`,
 **Test mode: checked** (2-minute blocks, 2 periods).
 
 There is no PVT difficulty field — the PVT has a single block with no
@@ -55,8 +55,26 @@ cursor and iMotions could not be reached. Re-run §1 with `Task display` set to
 - [ ] Now select a display that does not exist (e.g. `2` with one monitor
       connected): the DISPLAY NOT FOUND warning appears and the task runs on
       display 1 rather than crashing
-- [ ] Uncheck Fullscreen: the task opens in a window with the cursor visible
+- [ ] Display mode `Windowed`: the task opens in a window with the cursor visible
       *(monitoring only — windowed runs are flagged not analysable)*
+
+> **Layout note.** The checks above assume the participant screen is display 2.
+> In the lab the eye tracker is on the **laptop** screen, so pick whichever
+> display number is the laptop there. **Do not click iMotions mid-block with a
+> real participant**: the task loses keyboard focus and silently misses their
+> SPACEBAR presses. Interact with iMotions only at recalibration holds.
+
+### 1b. Borderless mode and screen capture
+
+Run `python tools/display_check.py` first (see `docs/display_check_handout.md`),
+then re-run §1 with Display mode `Borderless`:
+
+- [ ] No DISPLAY SIZE MISMATCH screen appears (if it does, set Windows display
+      scaling to 100% for that screen and relaunch)
+- [ ] The task covers the screen; no border, title bar or cursor is visible
+- [ ] iMotions screen recording shows the task, not a black or frozen frame
+- [ ] The output JSON has `metadata.display.mode == "borderless"` and
+      `size_mismatch: false`
 
 ---
 

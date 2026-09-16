@@ -169,7 +169,7 @@ python src/run_session.py
 - Task order: CVT → PVT
 - CVT difficulty order: high → low
 - Task display: `2` if a second monitor is connected, else `1`
-- Fullscreen: checked
+- Display mode: `Fullscreen` (or `Borderless` if iMotions screen recording is needed)
 - Test mode: checked
 
 (There is no PVT difficulty field as of Sept 2026 — the PVT is a single block.)

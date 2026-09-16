@@ -268,8 +268,9 @@ def save_data(
                 "diameter": STIM_CIRCLE.diameter,
                 "color": STIM_CIRCLE.fill_color,
             },
-            # Windowed runs can lose exclusive-fullscreen frame timing, so
-            # this is recorded to let analysis exclude them.
+            # Display mode changes frame timing (borderless and windowed runs
+            # are composited), so it is recorded to let analysis keep modes
+            # apart. See session_utils.build_display_meta for the fields.
             "display": display or {"screen": 0, "fullscreen": True},
             "is_practice": False,
             "test_mode": test_mode,
@@ -589,24 +590,25 @@ def main() -> None:
     from psychopy import core, gui  # noqa: PLC0415
 
     from session_utils import (  # noqa: PLC0415
+        DISPLAY_MODE_LABELS,
+        display_mismatch_body,
         display_warning_body,
-        make_window,
         message_screen,
-        resolve_screen_index,
+        open_task_window,
         screen_count,
     )
 
     info: dict = {
         "Participant ID": "",
         "Task display": list(range(1, screen_count() + 1)),
-        "Fullscreen": True,
+        "Display mode": list(DISPLAY_MODE_LABELS),
         "Test mode": False,
     }
     # copyDict=True works around a bug in PsychoPy 2026.1.3 DlgFromDict.show()
     dlg = gui.DlgFromDict(
         info,
         title="PVT",
-        order=["Participant ID", "Task display", "Fullscreen", "Test mode"],
+        order=["Participant ID", "Task display", "Display mode", "Test mode"],
         sortKeys=False,
         copyDict=True,
     )
@@ -618,18 +620,22 @@ def main() -> None:
     test_mode = bool(result["Test mode"])
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    screen, fell_back = resolve_screen_index(int(result["Task display"]))
-    fullscreen = bool(result["Fullscreen"])
-    win = make_window(screen=screen, fullscr=fullscreen)
+    win, display_meta, fell_back, display_issues = open_task_window(
+        int(result["Task display"]), str(result["Display mode"]),
+    )
 
     try:
         if fell_back and not message_screen(win, display_warning_body(
             int(result["Task display"]),
         )):
             return
+        if display_issues and not message_screen(
+            win, display_mismatch_body(display_issues),
+        ):
+            return
         run_full_session(
             win, participant_id, test_mode=test_mode, timestamp=timestamp,
-            display={"screen": screen, "fullscreen": fullscreen},
+            display=display_meta,
         )
     finally:
         win.close()

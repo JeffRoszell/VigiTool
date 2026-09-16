@@ -61,7 +61,7 @@ python src/pvt_task.py      # PVT only
 
 A dialog appears at launch. `run_session.py` collects participant ID, task order (CVT → PVT or PVT → CVT), **CVT** difficulty order, which display to run on, and an optional **Test mode** for a short run; the per-task entry points collect a smaller subset.
 
-**Running with a second monitor:** pick the participant's monitor in the **Task display** dropdown (1-based — "Display 2" means the second monitor). The task takes that screen fullscreen and leaves the cursor free on the other one, so iMotions can be monitored live during a block. If the chosen display doesn't exist the app warns and falls back to display 1. Windowed mode is available as an escape hatch, but windowed runs are for monitoring and debugging only — they can lose exclusive-fullscreen frame timing and are flagged in the output metadata as not analysable.
+**Running with a second monitor:** pick the participant's monitor in the **Task display** dropdown (1-based — "Display 2" means the second monitor). The task takes that screen fullscreen and leaves the cursor free on the other one, so iMotions can be monitored live during a block. If the chosen display doesn't exist the app warns and falls back to display 1. The **Display mode** dropdown offers Fullscreen (default), Borderless and Windowed. Borderless keeps the task capturable by iMotions screen recording at the cost of up to one frame of display latency; don't mix modes across participants. Windowed is for monitoring and debugging only. Run `python tools/display_check.py` to check a machine before switching modes.
 
 ---
 
