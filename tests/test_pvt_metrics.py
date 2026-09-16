@@ -381,6 +381,19 @@ def test_build_task_options_parses_the_reverse_order():
     assert opts["cvt"]["difficulty_order"] == ("low", "high")
 
 
+def test_session_launcher_call_binds_to_both_task_runners():
+    """Regression: run_session passed display= to a CVT runner that did not
+    accept it, so a full session raised TypeError when it reached the CVT.
+    Mirrors the keyword set of the dispatch loop in run_session.run."""
+    options = run_session.build_task_options({"CVT difficulty order": "high → low"})
+    shared = {
+        "test_mode": True, "timestamp": "20260916_120000", "break_minutes": 0.5,
+        "marker_client": None, "eye_tracker": None, "display": {"screen": 0},
+    }
+    for task, runner in (("cvt", cvt_task.run_full_session), ("pvt", pvt_task.run_full_session)):
+        inspect.signature(runner).bind(None, "PTEST", **shared, **options[task])
+
+
 def test_pvt_emitter_default_is_noop():
     em = PvtMarkerEmitter()
     em.block_start()

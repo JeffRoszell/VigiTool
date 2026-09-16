@@ -30,11 +30,12 @@ import pvt_task
 from imotions_api import EventReceivingAPI, LoggingMarkerClient, RemoteControlAPI
 from session_utils import (
     BREAK_MINUTES,
+    DISPLAY_MODE_LABELS,
+    display_mismatch_body,
     display_warning_body,
-    make_window,
     message_screen,
+    open_task_window,
     recalibration_hold,
-    resolve_screen_index,
     screen_count,
     timed_break,
 )
@@ -87,11 +88,12 @@ def run(
     *,
     break_minutes: float = BREAK_MINUTES,
     display_number: int = 1,
-    fullscreen: bool = True,
+    display_mode: str = "fullscreen",
 ) -> bool:
     """Run a full session. Returns True if escaped early.
 
-    `display_number` is 1-based, as the dialog presents it.
+    `display_number` is 1-based, as the dialog presents it. `display_mode` is
+    one of session_utils.DISPLAY_MODES (dialog labels are accepted too).
     """
     from psychopy import core  # noqa: PLC0415
 
@@ -117,15 +119,19 @@ def run(
         )
         remote_client.connect()
 
-    screen, fell_back = resolve_screen_index(display_number)
-    win = make_window(screen=screen, fullscr=fullscreen)
-    display_meta = {"screen": screen, "fullscreen": bool(fullscreen)}
+    win, display_meta, fell_back, display_issues = open_task_window(
+        display_number, display_mode,
+    )
 
     runners = {"cvt": cvt_task.run_full_session, "pvt": pvt_task.run_full_session}
 
     try:
         if fell_back and not message_screen(
             win, display_warning_body(display_number),
+        ):
+            return True
+        if display_issues and not message_screen(
+            win, display_mismatch_body(display_issues),
         ):
             return True
 
@@ -203,7 +209,9 @@ def main() -> None:
         "Task order": ["CVT → PVT", "PVT → CVT"],
         "CVT difficulty order": ["high → low", "low → high"],
         "Task display": list(range(1, screen_count() + 1)),
-        "Fullscreen": True,
+        # First label is the default. Borderless keeps the task capturable by
+        # iMotions screen recording; see the note above DISPLAY_MODES.
+        "Display mode": list(DISPLAY_MODE_LABELS),
         "Test mode": False,
     }
     dlg = gui.DlgFromDict(
@@ -214,7 +222,7 @@ def main() -> None:
             "Task order",
             "CVT difficulty order",
             "Task display",
-            "Fullscreen",
+            "Display mode",
             "Test mode",
         ],
         sortKeys=False,
@@ -236,7 +244,7 @@ def main() -> None:
         build_task_options(result),
         test_mode,
         display_number=int(result["Task display"]),
-        fullscreen=bool(result["Fullscreen"]),
+        display_mode=str(result["Display mode"]),
     )
 
 

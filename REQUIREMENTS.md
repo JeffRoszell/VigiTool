@@ -34,7 +34,7 @@
 
 ### 1.4 Fullscreen Display
 - Black background, white/colored stimuli
-- Fullscreen on all platforms
+- Covers the participant screen on all platforms (fullscreen or borderless mode — see §6)
 - ESC exits with data save
 
 ### 1.5 Future Integration
@@ -238,7 +238,13 @@ data/
     "lapse_threshold_ms": 500.0,
     "valid_rt_min_ms": 100.0,
     "stimulus": {"shape": "circle", "units": "height", "diameter": 0.10, "color": "red"},
-    "display": {"screen": 0, "fullscreen": true},
+    "display": {
+      "screen": 0, "fullscreen": false, "mode": "borderless", "requested_mode": "borderless",
+      "screen_geometry": {"x": 0, "y": 0, "width": 1920, "height": 1080},
+      "panel_resolution": [1920, 1080],
+      "window_geometry": {"x": 0, "y": 0, "width": 1920, "height": 1079},
+      "borderless_trim_px": 1, "refresh_hz": 60.0, "size_mismatch": false, "problems": []
+    },
     "is_practice": false,
     "test_mode": false
   },
@@ -297,14 +303,28 @@ session.
 - **Goal state**: the task runs fullscreen on the participant monitor while the RA
   retains a usable cursor on the operator monitor to monitor the iMotions recording
   live.
-- **Fullscreen**: on by default. A windowed option is provided as an escape hatch when
-  displays are mirrored or the index is wrong.
+- **Display mode** (dropdown, Sept 2026):
+  - **Fullscreen** — default. Best frame timing, but not capturable by iMotions screen
+    recording on the lab machine.
+  - **Borderless** — undecorated, cursorless window sized to the screen and trimmed by
+    1 px, so it stays composited and capturable. May add up to one frame of display
+    latency per trial. Becomes the default only after the bench check
+    (`tools/display_check.py`) passes on the lab machine.
+  - **Windowed** — escape hatch when displays are mirrored or the index is wrong.
+    Monitoring and debugging only.
+  - Modes must not be mixed across participants in the analysed sample.
+- **Geometry check**: after the window opens, its size and position are compared with the
+  screen, and on Windows the reported size with the panel's real resolution (they differ
+  when display scaling is above 100%). Any mismatch shows a DISPLAY SIZE MISMATCH hold
+  screen before the participant is seated.
 - **Pre-flight**: if the requested display index exceeds the detected screen count, the
   app warns on screen and falls back to display 1 rather than crashing or silently
   landing on the wrong monitor. Display indices come from the OS and can reorder when a
   monitor is unplugged or over remote desktop, so the index is confirmed before the
   participant is seated.
-- **Analysability**: `screen` and `fullscreen` are recorded in the output metadata.
+- **Analysability**: `metadata.display` (CVT and PVT) records `screen`, `fullscreen`,
+  `mode`, `requested_mode`, `screen_geometry`, `window_geometry`, `panel_resolution`,
+  `borderless_trim_px`, `refresh_hz`, `size_mismatch` and `problems`.
   Windowed mode can lose exclusive-fullscreen vsync and gain frame-timing jitter, so
   windowed runs are for monitoring and debugging only and are **not analysable**; the
   recorded flag lets analysis exclude them.

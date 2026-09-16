@@ -334,3 +334,18 @@ def test_metadata_has_no_age_field(tmp_path, monkeypatch):
     assert "age" not in data["metadata"]
     assert data["metadata"]["participant_id"] == "PTEST"
     assert data["trial_data"][0]["location"] in STIM_POS
+
+
+def test_metadata_records_the_display(tmp_path, monkeypatch):
+    """Display mode changes frame timing, so CVT output records it like the PVT."""
+    import json
+
+    from cvt_task import save_data
+
+    monkeypatch.chdir(tmp_path)
+    trials = build_trial_sequence("high", test_mode=True)
+    for t in trials:
+        t["outcome"] = "correct_rejection" if not t["is_signal"] else "miss"
+    display = {"screen": 0, "fullscreen": False, "mode": "borderless"}
+    path = save_data("PTEST", "high", True, trials, "20260506_120000", display=display)
+    assert json.loads(path.read_text())["metadata"]["display"] == display
