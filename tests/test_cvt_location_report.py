@@ -5,6 +5,8 @@ still be split, so the contract under test is: rows computed from `trial_data`
 alone, "total" rows that reproduce the file's own block-level numbers, and a
 readable refusal for files that carry no per-trial location.
 """
+from __future__ import annotations
+
 import csv
 import json
 import sys
