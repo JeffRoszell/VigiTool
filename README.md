@@ -112,3 +112,12 @@ VigiTool/
 ## Data
 
 Participant data is saved to `data/<participant_id>/` as JSON and is **never committed to version control** per IRB #0007078 data handling requirements.
+
+CVT files carry each measure three ways — whole block, central location, peripheral locations — in `performance_by_location`, per period in `period_performance[].by_location`, and per individual stimulus location in `performance_by_stimulus_location`. For sessions recorded before that block existed, `python tools/cvt_location_report.py` rebuilds the same split from the saved trials into one CSV:
+
+```bash
+python tools/cvt_location_report.py                # everything under data/
+python tools/cvt_location_report.py data/P001 --by-period --per-location
+```
+
+See `docs/cvt_location_metrics.md`.

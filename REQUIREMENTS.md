@@ -91,6 +91,21 @@
 - **Criterion (c)**: -0.5 × [Z(hit rate) + Z(false alarm rate)]
 - **Mean RT for hits** (ms)
 - **Period-level breakdown**: All above metrics computed per 6-minute period to measure vigilance decrement
+- **Central vs peripheral breakdown** (added Sept 2026, Co-PI request after discussion with
+  Dr. Poltavski): all of the above also computed for the **central** location (`center`) and
+  the **peripheral** locations (the four quadrants), at block level and per period. Reported
+  per difficulty block, so a session yields total/central/peripheral for high and for low.
+  - Each cell carries `n_signals` and `n_nonsignals`. One of the five locations is central,
+    so a 20-signal block holds ~4 central signals: `mean_rt_hits_ms` is well supported there,
+    while `d_prime` and `criterion` for the central cell are thin and must be read against
+    their n.
+  - **Per-location breakdown**: the same measures for each of the five locations
+    individually (`performance_by_stimulus_location`), block level only — each location
+    holds exactly one signal per period, so a per-period version would carry no
+    information. Per the Co-PI (Sept 2026): record the data as fine-grained as the design
+    supports and exclude or interpret cautiously at analysis time.
+  - The same splits are available for sessions recorded before this change via
+    `tools/cvt_location_report.py`, which recomputes them from `trial_data`.
 
 ### 2.7 Feedback During Task
 - Brief visual feedback on response: "HIT" (green) or "FALSE ALARM" (red)
@@ -181,6 +196,7 @@ data/
     "task": "cvt",
     "difficulty": "high",
     "timestamp": "20260316_140000",
+    "schema_version": 1,
     "stimulus_duration_ms": 1000,
     "isi_ms": 500,
     "block_duration_minutes": 24,
@@ -199,8 +215,23 @@ data/
     "criterion": 0.0,
     "mean_rt_hits_ms": 0.0
   },
+  "performance_by_location": {
+    "central":    {"hits": 0, "misses": 0, "false_alarms": 0, "correct_rejections": 0,
+                   "hit_rate": 0.0, "false_alarm_rate": 0.0, "d_prime": 0.0, "criterion": 0.0,
+                   "mean_rt_hits_ms": 0.0, "n_signals": 4, "n_nonsignals": 0},
+    "peripheral": {"hits": 0, "misses": 0, "false_alarms": 0, "correct_rejections": 0,
+                   "hit_rate": 0.0, "false_alarm_rate": 0.0, "d_prime": 0.0, "criterion": 0.0,
+                   "mean_rt_hits_ms": 0.0, "n_signals": 16, "n_nonsignals": 0}
+  },
+  "performance_by_stimulus_location": {
+    "center":      {"...": "same measures", "n_signals": 4, "n_nonsignals": 0,
+                    "location_class": "central"},
+    "upper_left":  {"...": "same measures", "n_signals": 4, "n_nonsignals": 0,
+                    "location_class": "peripheral"}
+  },
   "period_performance": [
-    {"period": 1, "hit_rate": 0.0, "false_alarm_rate": 0.0, "d_prime": 0.0, "mean_rt_hits_ms": 0.0}
+    {"period": 1, "hit_rate": 0.0, "false_alarm_rate": 0.0, "d_prime": 0.0, "mean_rt_hits_ms": 0.0,
+     "by_location": {"central": {}, "peripheral": {}}}
   ],
   "trial_data": [
     {
@@ -218,7 +249,9 @@ data/
 }
 ```
 
-`location` is one of: `upper_left`, `upper_right`, `lower_left`, `lower_right`, `center`. Additional locations may be added in future revisions.
+`location` is one of: `upper_left`, `upper_right`, `lower_left`, `lower_right`, `center`. Additional locations may be added in future revisions; each must be classified central or peripheral in `cvt_task.CENTRAL_LOCATIONS` / `PERIPHERAL_LOCATIONS`, or `location_class` raises rather than dropping the trial from both cells.
+
+`schema_version` was added in Sept 2026 alongside `performance_by_location`. An absent `schema_version` means a file written before that block existed. The **protocol is unchanged**, so those files may be pooled with v1 files — unlike the PVT's v1 → v2 change, which was a protocol change.
 
 ### 4.3 JSON Schema — PVT
 ```json

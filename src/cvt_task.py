@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 # ── Constants ──────────────────────────────────────────────────────────────
 
 STIM_DURATION = 1.0           # s
+CVT_SCHEMA_VERSION = 1
+
 ISI_S = {"high": 0.5, "low": 1.5}
 BLOCK_MINUTES = {"full": 24, "test": 2}
 NUM_PERIODS = {"full": 4, "test": 2}
@@ -36,6 +38,15 @@ STIM_POS = {
     "center":      ( 0.0,  0.0),
 }
 JITTER = 0.05   # ± norm units
+
+# Sept 2026 (Co-PI request, after discussion with Dr. Poltavski): measures are
+# also reported split by where the stimulus appeared. "center" is the central
+# display; the four quadrants are peripheral. One of the five locations is
+# central, so a 20-signal block yields only ~4 central signals — cell counts
+# are reported alongside every metric so a thin estimate is visible as such.
+CENTRAL_LOCATIONS = ("center",)
+PERIPHERAL_LOCATIONS = ("upper_left", "upper_right", "lower_left", "lower_right")
+LOCATION_CLASSES = ("central", "peripheral")
 
 
 # ── iMotions marker labels ─────────────────────────────────────────────────
@@ -253,6 +264,60 @@ def compute_sdt(trials: list[dict]) -> dict:
     }
 
 
+def location_class(location: str) -> str:
+    """"central" or "peripheral" for a stimulus location.
+
+    Raises KeyError on an unknown location rather than silently dropping the
+    trial from both cells, which would make the split stop summing to the
+    total without anything in the output saying so.
+    """
+    if location in CENTRAL_LOCATIONS:
+        return "central"
+    if location in PERIPHERAL_LOCATIONS:
+        return "peripheral"
+    raise KeyError(f"Unknown stimulus location: {location!r}")
+
+
+def compute_location_metrics(trials: list[dict]) -> dict:
+    """The full SDT measure set per location class, plus each cell's size.
+
+    Same measures as `compute_sdt`, computed on the central and peripheral
+    subsets. `n_signals`/`n_nonsignals` are included because a block has four
+    times as many peripheral as central signals: d' and criterion for the
+    central cell rest on roughly four trials and must not be read without
+    their n.
+    """
+    out = {}
+    for cls in LOCATION_CLASSES:
+        subset = [t for t in trials if location_class(t["location"]) == cls]
+        metrics = compute_sdt(subset)
+        metrics["n_signals"] = sum(1 for t in subset if t["is_signal"])
+        metrics["n_nonsignals"] = sum(1 for t in subset if not t["is_signal"])
+        out[cls] = metrics
+    return out
+
+
+def compute_per_location_metrics(trials: list[dict]) -> dict:
+    """The same measure set for each of the five stimulus locations.
+
+    The finest split the design supports: a 20-signal block places one signal
+    per location per period, so each location holds ~4 signals at block level
+    (and exactly one per period, which is why this is not repeated inside
+    `period_performance`). Cell counts travel with every cell; d' and
+    criterion at this grain are for exploration, not for reporting on their
+    own.
+    """
+    out = {}
+    for loc in STIM_POS:
+        subset = [t for t in trials if t["location"] == loc]
+        metrics = compute_sdt(subset)
+        metrics["n_signals"] = sum(1 for t in subset if t["is_signal"])
+        metrics["n_nonsignals"] = sum(1 for t in subset if not t["is_signal"])
+        metrics["location_class"] = location_class(loc)
+        out[loc] = metrics
+    return out
+
+
 def compute_period_metrics(trials: list[dict], n_periods: int) -> list[dict]:
     result = []
     for p in range(1, n_periods + 1):
@@ -264,6 +329,7 @@ def compute_period_metrics(trials: list[dict], n_periods: int) -> list[dict]:
             "false_alarm_rate": m["false_alarm_rate"],
             "d_prime": m["d_prime"],
             "mean_rt_hits_ms": m["mean_rt_hits_ms"],
+            "by_location": compute_location_metrics(pt),
         })
     return result
 
@@ -291,6 +357,11 @@ def save_data(
             "task": "cvt",
             "difficulty": difficulty,
             "timestamp": timestamp,
+            # Added Sept 2026 with performance_by_location. An absent
+            # schema_version means a file written before that block existed;
+            # the protocol itself is unchanged, so v1 and pre-v1 CVT files
+            # may be pooled (unlike the PVT's v1 → v2 change).
+            "schema_version": CVT_SCHEMA_VERSION,
             "stimulus_duration_ms": int(STIM_DURATION * 1000),
             "isi_ms": int(ISI_S[difficulty] * 1000),
             "block_duration_minutes": BLOCK_MINUTES[mode],
@@ -303,6 +374,8 @@ def save_data(
             "eye_tracker": eye_tracker,
         },
         "performance": compute_sdt(trials),
+        "performance_by_location": compute_location_metrics(trials),
+        "performance_by_stimulus_location": compute_per_location_metrics(trials),
         "period_performance": compute_period_metrics(trials, NUM_PERIODS[mode]),
         "trial_data": trials,
     }

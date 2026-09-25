@@ -10,6 +10,46 @@ Each release entry records the **PI protocol revision** the code targets.
 
 ## [Unreleased]
 
+### CVT central vs peripheral measures — Sept 2026 (Co-PI request)
+
+Requested by Dr. Gupta after discussion with Dr. Poltavski: hits, false
+alarms, d', criterion and mean hit RT split by central and peripheral
+stimulus location, within each difficulty block.
+
+#### Added
+- `performance_by_location` in every CVT JSON: the full measure set for the
+  `central` location and the `peripheral` quadrants, each with `n_signals`
+  and `n_nonsignals`. Each file is one difficulty block, so a session gives
+  total/central/peripheral for high and for low.
+- `by_location` inside each entry of `period_performance`.
+- `performance_by_stimulus_location`: the same measures for each of the five
+  locations individually, block level only (one signal per location per
+  period makes a per-period version meaningless). Per the Co-PI: keep the
+  data as fine-grained as the design supports, and exclude or interpret
+  cautiously during analysis.
+- `cvt_task.location_class` and `compute_location_metrics`; the location
+  classes are declared next to `STIM_POS`. An unclassified location raises
+  rather than disappearing from both cells.
+- `metadata.schema_version` on CVT output (`1`). Absent means a file written
+  before `performance_by_location`; the protocol is unchanged, so those files
+  may still be pooled.
+- `tools/cvt_location_report.py`: rebuilds the split from `trial_data` for
+  sessions already collected and writes one CSV (`--by-period` optional). It
+  imports the task's own metric functions, so report and JSON cannot drift.
+  Files predating the five-location protocol are skipped with a reason, and
+  `--per-location` adds a row per stimulus location.
+- `docs/cvt_location_metrics.md` — what is computed and how to read it.
+- 20 tests: classification, both splits summing back to the block total,
+  hit-RT handling, empty cells, the unchanged `performance` block, and the CSV.
+
+#### Note
+One of five locations is central, so a 20-signal block holds ~4 central
+signals, and each individual location holds ~4 as well. `mean_rt_hits_ms` is
+well supported at the central/peripheral grain; `d_prime` and `criterion` for
+the central and per-location cells are thin and are published with their cell
+counts alongside. Confirmed with the Co-PI (Sept 2026): record everything,
+decide what to use at analysis time.
+
 ### Display modes — Sept 2026
 
 Second lab run: with the display selection fixed, the task and iMotions ran

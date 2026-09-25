@@ -4,7 +4,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
+import pytest
 from cvt_task import (
+    CENTRAL_LOCATIONS,
+    LOCATION_CLASSES,
     NUM_PERIODS,
     SIGNALS_PER_PERIOD,
     STIM_POS,
@@ -13,8 +16,11 @@ from cvt_task import (
     _non_signal,
     build_practice_sequence,
     build_trial_sequence,
+    compute_location_metrics,
+    compute_per_location_metrics,
     compute_period_metrics,
     compute_sdt,
+    location_class,
 )
 
 
@@ -349,3 +355,171 @@ def test_metadata_records_the_display(tmp_path, monkeypatch):
     display = {"screen": 0, "fullscreen": False, "mode": "borderless"}
     path = save_data("PTEST", "high", True, trials, "20260506_120000", display=display)
     assert json.loads(path.read_text())["metadata"]["display"] == display
+
+
+# ── Central vs peripheral metrics (Co-PI request, Sept 2026) ───────────────
+
+def _scored(spec):
+    """Build trials from (location, is_signal, outcome, rt) tuples."""
+    return [
+        {"location": loc, "is_signal": sig, "outcome": outcome, "reaction_time_ms": rt}
+        for loc, sig, outcome, rt in spec
+    ]
+
+
+def test_center_is_central_and_every_quadrant_is_peripheral():
+    assert location_class("center") == "central"
+    for loc in STIM_POS:
+        expected = "central" if loc in CENTRAL_LOCATIONS else "peripheral"
+        assert location_class(loc) == expected
+    assert set(LOCATION_CLASSES) == {"central", "peripheral"}
+
+
+def test_unknown_location_raises_rather_than_vanishing():
+    """A dropped trial would break the central + peripheral = total identity."""
+    with pytest.raises(KeyError):
+        location_class("upper_middle")
+
+
+def test_counts_split_and_sum_back_to_the_block_total():
+    trials = _scored([
+        ("center", True, "hit", 500.0),
+        ("center", True, "miss", None),
+        ("center", False, "false_alarm", 480.0),
+        ("center", False, "correct_rejection", None),
+        ("upper_left", True, "hit", 400.0),
+        ("lower_right", True, "hit", 420.0),
+        ("upper_right", True, "miss", None),
+        ("lower_left", False, "correct_rejection", None),
+        ("upper_left", False, "false_alarm", 390.0),
+    ])
+    total = compute_sdt(trials)
+    by_loc = compute_location_metrics(trials)
+    for key in ("hits", "misses", "false_alarms", "correct_rejections"):
+        assert by_loc["central"][key] + by_loc["peripheral"][key] == total[key], key
+    assert by_loc["central"]["n_signals"] == 2
+    assert by_loc["central"]["n_nonsignals"] == 2
+    assert by_loc["peripheral"]["n_signals"] == 3
+    assert by_loc["peripheral"]["n_nonsignals"] == 2
+
+
+def test_mean_hit_rt_is_split_and_counts_hits_only():
+    trials = _scored([
+        ("center", True, "hit", 500.0),
+        ("center", True, "miss", None),
+        ("center", False, "false_alarm", 100.0),   # must not enter the mean
+        ("upper_left", True, "hit", 400.0),
+        ("lower_right", True, "hit", 420.0),
+    ])
+    by_loc = compute_location_metrics(trials)
+    assert by_loc["central"]["mean_rt_hits_ms"] == 500.0
+    assert by_loc["peripheral"]["mean_rt_hits_ms"] == 410.0
+
+
+def test_empty_cell_reports_no_rt_and_its_zero_count():
+    """Central is 1 of 5 locations, so a short block can have no central hits."""
+    trials = _scored([("upper_left", True, "hit", 400.0)])
+    central = compute_location_metrics(trials)["central"]
+    assert central["mean_rt_hits_ms"] is None
+    assert central["n_signals"] == central["n_nonsignals"] == 0
+    assert central["hits"] == 0
+
+
+def test_block_level_performance_is_unchanged_by_the_split():
+    """Regression: the existing `performance` block must keep its exact shape."""
+    trials = _scored([
+        ("center", True, "hit", 500.0),
+        ("upper_left", True, "miss", None),
+        ("lower_left", False, "correct_rejection", None),
+    ])
+    assert set(compute_sdt(trials)) == {
+        "hits", "misses", "false_alarms", "correct_rejections", "hit_rate",
+        "false_alarm_rate", "d_prime", "criterion", "mean_rt_hits_ms",
+    }
+
+
+def test_period_metrics_carry_the_location_split():
+    trials = build_trial_sequence("high", test_mode=True)
+    for t in trials:
+        t["outcome"] = "hit" if t["is_signal"] else "correct_rejection"
+        t["reaction_time_ms"] = 400.0 if t["is_signal"] else None
+    periods = compute_period_metrics(trials, NUM_PERIODS["test"])
+    for period in periods:
+        assert set(period["by_location"]) == set(LOCATION_CLASSES)
+        assert (period["by_location"]["central"]["hits"]
+                + period["by_location"]["peripheral"]["hits"]) == sum(
+            1 for t in trials
+            if t.get("period") == period["period"] and t["outcome"] == "hit"
+        )
+
+
+def test_saved_file_has_the_location_block_and_a_schema_version(tmp_path, monkeypatch):
+    import json
+
+    from cvt_task import CVT_SCHEMA_VERSION, save_data
+
+    monkeypatch.chdir(tmp_path)
+    trials = build_trial_sequence("high", test_mode=True)
+    for t in trials:
+        t["outcome"] = "hit" if t["is_signal"] else "correct_rejection"
+        t["reaction_time_ms"] = 400.0 if t["is_signal"] else None
+    data = json.loads(save_data("PTEST", "high", True, trials, "20260925_101500").read_text())
+
+    assert data["metadata"]["schema_version"] == CVT_SCHEMA_VERSION
+    by_loc = data["performance_by_location"]
+    assert set(by_loc) == set(LOCATION_CLASSES)
+    assert (by_loc["central"]["hits"] + by_loc["peripheral"]["hits"]
+            == data["performance"]["hits"])
+    assert by_loc["central"]["n_signals"] + by_loc["peripheral"]["n_signals"] == sum(
+        1 for t in trials if t["is_signal"]
+    )
+
+
+def test_per_location_metrics_cover_every_location_and_sum_to_the_total():
+    """The finest grain the design supports: one cell per stimulus location."""
+    trials = _scored([
+        ("center", True, "hit", 500.0),
+        ("upper_left", True, "hit", 400.0),
+        ("upper_left", False, "false_alarm", 300.0),
+        ("upper_right", True, "miss", None),
+        ("lower_left", False, "correct_rejection", None),
+        ("lower_right", True, "hit", 420.0),
+    ])
+    per_loc = compute_per_location_metrics(trials)
+    total = compute_sdt(trials)
+
+    assert set(per_loc) == set(STIM_POS)
+    for key in ("hits", "misses", "false_alarms", "correct_rejections"):
+        assert sum(cell[key] for cell in per_loc.values()) == total[key], key
+    assert per_loc["upper_left"]["hits"] == 1
+    assert per_loc["upper_left"]["false_alarms"] == 1
+    assert per_loc["upper_left"]["mean_rt_hits_ms"] == 400.0  # not the FA's 300
+    assert per_loc["lower_left"]["n_signals"] == 0
+
+
+def test_every_per_location_cell_names_its_class_and_counts():
+    trials = _scored([("center", True, "hit", 500.0), ("upper_left", True, "miss", None)])
+    per_loc = compute_per_location_metrics(trials)
+    assert per_loc["center"]["location_class"] == "central"
+    assert all(per_loc[loc]["location_class"] == "peripheral"
+               for loc in STIM_POS if loc != "center")
+    assert per_loc["center"]["n_signals"] == 1
+
+
+def test_saved_file_carries_the_per_location_block(tmp_path, monkeypatch):
+    import json
+
+    from cvt_task import save_data
+
+    monkeypatch.chdir(tmp_path)
+    trials = build_trial_sequence("low", test_mode=True)
+    for t in trials:
+        t["outcome"] = "hit" if t["is_signal"] else "correct_rejection"
+        t["reaction_time_ms"] = 400.0 if t["is_signal"] else None
+    data = json.loads(save_data("PTEST", "low", True, trials, "20260925_101500").read_text())
+
+    per_loc = data["performance_by_stimulus_location"]
+    assert set(per_loc) == set(STIM_POS)
+    assert sum(cell["hits"] for cell in per_loc.values()) == data["performance"]["hits"]
+    # The coarser split stays available beside it.
+    assert set(data["performance_by_location"]) == set(LOCATION_CLASSES)
