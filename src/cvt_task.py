@@ -297,6 +297,27 @@ def compute_location_metrics(trials: list[dict]) -> dict:
     return out
 
 
+def compute_per_location_metrics(trials: list[dict]) -> dict:
+    """The same measure set for each of the five stimulus locations.
+
+    The finest split the design supports: a 20-signal block places one signal
+    per location per period, so each location holds ~4 signals at block level
+    (and exactly one per period, which is why this is not repeated inside
+    `period_performance`). Cell counts travel with every cell; d' and
+    criterion at this grain are for exploration, not for reporting on their
+    own.
+    """
+    out = {}
+    for loc in STIM_POS:
+        subset = [t for t in trials if t["location"] == loc]
+        metrics = compute_sdt(subset)
+        metrics["n_signals"] = sum(1 for t in subset if t["is_signal"])
+        metrics["n_nonsignals"] = sum(1 for t in subset if not t["is_signal"])
+        metrics["location_class"] = location_class(loc)
+        out[loc] = metrics
+    return out
+
+
 def compute_period_metrics(trials: list[dict], n_periods: int) -> list[dict]:
     result = []
     for p in range(1, n_periods + 1):
@@ -354,6 +375,7 @@ def save_data(
         },
         "performance": compute_sdt(trials),
         "performance_by_location": compute_location_metrics(trials),
+        "performance_by_stimulus_location": compute_per_location_metrics(trials),
         "period_performance": compute_period_metrics(trials, NUM_PERIODS[mode]),
         "trial_data": trials,
     }

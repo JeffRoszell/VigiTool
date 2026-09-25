@@ -8,12 +8,14 @@ modified: this reads `trial_data` and writes one CSV.
     python tools/cvt_location_report.py                  # everything under data/
     python tools/cvt_location_report.py data/P001        # one participant
     python tools/cvt_location_report.py --by-period      # split by period too
+    python tools/cvt_location_report.py --per-location   # each of the 5 locations
     python tools/cvt_location_report.py -o report.csv
 
 One row per participant x difficulty x location class ("total", "central",
-"peripheral"), so the "total" rows reproduce the block-level numbers and the
-other two split them. The measures come from `cvt_task`, the same code the
-task itself uses, so the report and the JSON cannot drift apart.
+"peripheral", and with --per-location each individual location), so the
+"total" rows reproduce the block-level numbers and the rest split them. The
+measures come from `cvt_task`, the same code the task itself uses, so the
+report and the JSON cannot drift apart.
 
 Central is 1 of the 5 locations: a 20-signal block has ~4 central signals.
 `n_signals` is in every row for that reason — read d_prime and criterion for
@@ -29,7 +31,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from cvt_task import compute_sdt, location_class  # noqa: E402
+from cvt_task import STIM_POS, compute_sdt, location_class  # noqa: E402
 
 FIELDS = (
     "participant_id", "difficulty", "timestamp", "period", "location_class",
@@ -58,8 +60,12 @@ def _row(meta: dict, trials: list[dict], cls: str, period, source: Path) -> dict
     }
 
 
-def rows_for_file(path: Path, by_period: bool = False) -> list[dict]:
+def rows_for_file(path: Path, by_period: bool = False,
+                  per_location: bool = False) -> list[dict]:
     """Rows for one CVT JSON.
+
+    `per_location` adds a row for each of the five stimulus locations on top
+    of the total/central/peripheral rows.
 
     Raises ValueError for a file whose trials carry no location — sessions
     recorded before the five-location protocol cannot be split this way.
@@ -84,6 +90,10 @@ def rows_for_file(path: Path, by_period: bool = False) -> list[dict]:
         for cls in ("central", "peripheral"):
             in_cls = [t for t in subset if location_class(t["location"]) == cls]
             rows.append(_row(meta, in_cls, cls, period, path))
+        if per_location:
+            for loc in STIM_POS:
+                at_loc = [t for t in subset if t["location"] == loc]
+                rows.append(_row(meta, at_loc, loc, period, path))
     return rows
 
 
@@ -102,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="CSV path (default: <path>/cvt_location_report.csv)")
     parser.add_argument("--by-period", action="store_true",
                         help="also emit one set of rows per period")
+    parser.add_argument("--per-location", action="store_true",
+                        help="also emit a row for each of the five stimulus locations")
     args = parser.parse_args(argv)
 
     root = Path(args.path)
@@ -116,7 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     skipped: list[str] = []
     for path in files:
         try:
-            rows += rows_for_file(path, by_period=args.by_period)
+            rows += rows_for_file(path, by_period=args.by_period,
+                                  per_location=args.per_location)
         except (KeyError, ValueError, json.JSONDecodeError) as exc:
             skipped.append(f"{path}: {exc}")
 

@@ -99,8 +99,13 @@
     so a 20-signal block holds ~4 central signals: `mean_rt_hits_ms` is well supported there,
     while `d_prime` and `criterion` for the central cell are thin and must be read against
     their n.
-  - The same split is available for sessions recorded before this change via
-    `tools/cvt_location_report.py`, which recomputes it from `trial_data`.
+  - **Per-location breakdown**: the same measures for each of the five locations
+    individually (`performance_by_stimulus_location`), block level only — each location
+    holds exactly one signal per period, so a per-period version would carry no
+    information. Per the Co-PI (Sept 2026): record the data as fine-grained as the design
+    supports and exclude or interpret cautiously at analysis time.
+  - The same splits are available for sessions recorded before this change via
+    `tools/cvt_location_report.py`, which recomputes them from `trial_data`.
 
 ### 2.7 Feedback During Task
 - Brief visual feedback on response: "HIT" (green) or "FALSE ALARM" (red)
@@ -217,6 +222,12 @@ data/
     "peripheral": {"hits": 0, "misses": 0, "false_alarms": 0, "correct_rejections": 0,
                    "hit_rate": 0.0, "false_alarm_rate": 0.0, "d_prime": 0.0, "criterion": 0.0,
                    "mean_rt_hits_ms": 0.0, "n_signals": 16, "n_nonsignals": 0}
+  },
+  "performance_by_stimulus_location": {
+    "center":      {"...": "same measures", "n_signals": 4, "n_nonsignals": 0,
+                    "location_class": "central"},
+    "upper_left":  {"...": "same measures", "n_signals": 4, "n_nonsignals": 0,
+                    "location_class": "peripheral"}
   },
   "period_performance": [
     {"period": 1, "hit_rate": 0.0, "false_alarm_rate": 0.0, "d_prime": 0.0, "mean_rt_hits_ms": 0.0,

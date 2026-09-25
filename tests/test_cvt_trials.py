@@ -17,6 +17,7 @@ from cvt_task import (
     build_practice_sequence,
     build_trial_sequence,
     compute_location_metrics,
+    compute_per_location_metrics,
     compute_period_metrics,
     compute_sdt,
     location_class,
@@ -472,3 +473,53 @@ def test_saved_file_has_the_location_block_and_a_schema_version(tmp_path, monkey
     assert by_loc["central"]["n_signals"] + by_loc["peripheral"]["n_signals"] == sum(
         1 for t in trials if t["is_signal"]
     )
+
+
+def test_per_location_metrics_cover_every_location_and_sum_to_the_total():
+    """The finest grain the design supports: one cell per stimulus location."""
+    trials = _scored([
+        ("center", True, "hit", 500.0),
+        ("upper_left", True, "hit", 400.0),
+        ("upper_left", False, "false_alarm", 300.0),
+        ("upper_right", True, "miss", None),
+        ("lower_left", False, "correct_rejection", None),
+        ("lower_right", True, "hit", 420.0),
+    ])
+    per_loc = compute_per_location_metrics(trials)
+    total = compute_sdt(trials)
+
+    assert set(per_loc) == set(STIM_POS)
+    for key in ("hits", "misses", "false_alarms", "correct_rejections"):
+        assert sum(cell[key] for cell in per_loc.values()) == total[key], key
+    assert per_loc["upper_left"]["hits"] == 1
+    assert per_loc["upper_left"]["false_alarms"] == 1
+    assert per_loc["upper_left"]["mean_rt_hits_ms"] == 400.0  # not the FA's 300
+    assert per_loc["lower_left"]["n_signals"] == 0
+
+
+def test_every_per_location_cell_names_its_class_and_counts():
+    trials = _scored([("center", True, "hit", 500.0), ("upper_left", True, "miss", None)])
+    per_loc = compute_per_location_metrics(trials)
+    assert per_loc["center"]["location_class"] == "central"
+    assert all(per_loc[loc]["location_class"] == "peripheral"
+               for loc in STIM_POS if loc != "center")
+    assert per_loc["center"]["n_signals"] == 1
+
+
+def test_saved_file_carries_the_per_location_block(tmp_path, monkeypatch):
+    import json
+
+    from cvt_task import save_data
+
+    monkeypatch.chdir(tmp_path)
+    trials = build_trial_sequence("low", test_mode=True)
+    for t in trials:
+        t["outcome"] = "hit" if t["is_signal"] else "correct_rejection"
+        t["reaction_time_ms"] = 400.0 if t["is_signal"] else None
+    data = json.loads(save_data("PTEST", "low", True, trials, "20260925_101500").read_text())
+
+    per_loc = data["performance_by_stimulus_location"]
+    assert set(per_loc) == set(STIM_POS)
+    assert sum(cell["hits"] for cell in per_loc.values()) == data["performance"]["hits"]
+    # The coarser split stays available beside it.
+    assert set(data["performance_by_location"]) == set(LOCATION_CLASSES)

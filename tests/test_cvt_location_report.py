@@ -106,3 +106,20 @@ def test_main_writes_a_csv_and_skips_unusable_files(tmp_path, capsys):
         rows = list(csv.DictReader(fh))
     assert [r["location_class"] for r in rows] == ["total", "central", "peripheral"]
     assert "skipped" in capsys.readouterr().out
+
+
+def test_per_location_adds_a_row_for_each_of_the_five_locations(tmp_path):
+    rows = rows_for_file(_file(tmp_path, TRIALS), per_location=True)
+    classes = [r["location_class"] for r in rows]
+    assert classes[:3] == ["total", "central", "peripheral"]
+    assert set(classes[3:]) == {
+        "center", "upper_left", "upper_right", "lower_left", "lower_right",
+    }
+    per_loc = {r["location_class"]: r for r in rows[3:]}
+    assert per_loc["center"]["hits"] == 1
+    assert per_loc["center"]["n_signals"] == 2
+    assert sum(int(per_loc[loc]["hits"]) for loc in per_loc) == int(rows[0]["hits"])
+
+
+def test_per_location_is_off_by_default(tmp_path):
+    assert len(rows_for_file(_file(tmp_path, TRIALS))) == 3

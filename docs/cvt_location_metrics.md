@@ -28,6 +28,7 @@ Inside each file:
 | `performance_by_location.central` | The same measures, central stimuli only |
 | `performance_by_location.peripheral` | The same measures, peripheral stimuli only |
 | `period_performance[].by_location` | The same split, for each 6-minute period |
+| `performance_by_stimulus_location` | The same measures for each of the five locations on its own |
 
 Each location block contains:
 
@@ -59,6 +60,18 @@ or across the two blocks, is the usual way to firm this up.
 so the two cells are not equally precise. Comparing them directly is a
 comparison of a stable estimate with a noisy one.
 
+## Each location on its own
+
+`performance_by_stimulus_location` holds a cell per location (`center`,
+`upper_left`, `upper_right`, `lower_left`, `lower_right`), each tagged with
+its `location_class` and its counts. One signal is placed in each location per
+period, so a block gives about 4 signals per location — the same footing as
+the central cell above. It is recorded because the design supports it; whether
+it survives into analysis is a decision for the data, not for the task.
+
+It is block level only. Per period each location holds exactly one signal, so
+a per-period version would carry nothing.
+
 ## Sessions already collected
 
 Nothing needs re-running. Every session file already stores each trial's
@@ -69,6 +82,7 @@ collected before this change:
 python tools/cvt_location_report.py                      # everything under data/
 python tools/cvt_location_report.py data/P001            # one participant
 python tools/cvt_location_report.py --by-period          # also split by period
+python tools/cvt_location_report.py --per-location       # a row per location
 python tools/cvt_location_report.py -o ~/Desktop/cvt.csv
 ```
 
@@ -85,9 +99,9 @@ Sessions recorded before the five-location protocol have no location on each
 trial. Those files are listed as skipped, with the reason, instead of being
 silently left out.
 
-## Question outstanding
+## Settled
 
-Would you like central d′ and criterion kept as they are (reported with their
-trial counts), or would you rather d′ and criterion stayed at the block level,
-with only hits, false alarms and mean RT split by location? Either is a small
-change from here.
+Central d′ and criterion are reported as computed, with the trial count in
+every cell, and the per-location split is recorded as well — per the Co-PI,
+September 2026: keep the data as fine-grained as the design allows and decide
+what to exclude, or how cautiously to read it, during analysis.

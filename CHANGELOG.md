@@ -22,6 +22,11 @@ stimulus location, within each difficulty block.
   and `n_nonsignals`. Each file is one difficulty block, so a session gives
   total/central/peripheral for high and for low.
 - `by_location` inside each entry of `period_performance`.
+- `performance_by_stimulus_location`: the same measures for each of the five
+  locations individually, block level only (one signal per location per
+  period makes a per-period version meaningless). Per the Co-PI: keep the
+  data as fine-grained as the design supports, and exclude or interpret
+  cautiously during analysis.
 - `cvt_task.location_class` and `compute_location_metrics`; the location
   classes are declared next to `STIM_POS`. An unclassified location raises
   rather than disappearing from both cells.
@@ -31,15 +36,19 @@ stimulus location, within each difficulty block.
 - `tools/cvt_location_report.py`: rebuilds the split from `trial_data` for
   sessions already collected and writes one CSV (`--by-period` optional). It
   imports the task's own metric functions, so report and JSON cannot drift.
-  Files predating the five-location protocol are skipped with a reason.
+  Files predating the five-location protocol are skipped with a reason, and
+  `--per-location` adds a row per stimulus location.
 - `docs/cvt_location_metrics.md` — what is computed and how to read it.
-- 15 tests: classification, the split summing back to the block total, hit-RT
-  handling, empty cells, the unchanged `performance` block, and the CSV.
+- 20 tests: classification, both splits summing back to the block total,
+  hit-RT handling, empty cells, the unchanged `performance` block, and the CSV.
 
 #### Note
 One of five locations is central, so a 20-signal block holds ~4 central
-signals. `mean_rt_hits_ms` is well supported there; central `d_prime` and
-`criterion` are thin and are published with their cell counts alongside.
+signals, and each individual location holds ~4 as well. `mean_rt_hits_ms` is
+well supported at the central/peripheral grain; `d_prime` and `criterion` for
+the central and per-location cells are thin and are published with their cell
+counts alongside. Confirmed with the Co-PI (Sept 2026): record everything,
+decide what to use at analysis time.
 
 ### Display modes — Sept 2026
 
