@@ -10,6 +10,37 @@ Each release entry records the **PI protocol revision** the code targets.
 
 ## [Unreleased]
 
+### CVT central vs peripheral measures — Sept 2026 (Co-PI request)
+
+Requested by Dr. Gupta after discussion with Dr. Poltavski: hits, false
+alarms, d', criterion and mean hit RT split by central and peripheral
+stimulus location, within each difficulty block.
+
+#### Added
+- `performance_by_location` in every CVT JSON: the full measure set for the
+  `central` location and the `peripheral` quadrants, each with `n_signals`
+  and `n_nonsignals`. Each file is one difficulty block, so a session gives
+  total/central/peripheral for high and for low.
+- `by_location` inside each entry of `period_performance`.
+- `cvt_task.location_class` and `compute_location_metrics`; the location
+  classes are declared next to `STIM_POS`. An unclassified location raises
+  rather than disappearing from both cells.
+- `metadata.schema_version` on CVT output (`1`). Absent means a file written
+  before `performance_by_location`; the protocol is unchanged, so those files
+  may still be pooled.
+- `tools/cvt_location_report.py`: rebuilds the split from `trial_data` for
+  sessions already collected and writes one CSV (`--by-period` optional). It
+  imports the task's own metric functions, so report and JSON cannot drift.
+  Files predating the five-location protocol are skipped with a reason.
+- `docs/cvt_location_metrics.md` — what is computed and how to read it.
+- 15 tests: classification, the split summing back to the block total, hit-RT
+  handling, empty cells, the unchanged `performance` block, and the CSV.
+
+#### Note
+One of five locations is central, so a 20-signal block holds ~4 central
+signals. `mean_rt_hits_ms` is well supported there; central `d_prime` and
+`criterion` are thin and are published with their cell counts alongside.
+
 ### Display modes — Sept 2026
 
 Second lab run: with the display selection fixed, the task and iMotions ran
